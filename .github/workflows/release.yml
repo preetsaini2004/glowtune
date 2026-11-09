@@ -1,4 +1,5 @@
 # Builds the Windows installer from a version tag (git tag v0.1.0 && git push --tags)
+# (the Check workflow already tests every push to main)
 # and attaches it, with its SHA-256, to a DRAFT release. Publish the draft by hand
 # after testing the installer.
 #
@@ -19,7 +20,7 @@ jobs:
   windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@master
         with:
           toolchain: 1.96.1
@@ -28,15 +29,11 @@ jobs:
       - uses: pnpm/action-setup@v4
         with:
           version: 12.18.0
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
-
-      - name: Run all checks
-        shell: bash
-        run: ./scripts/check.sh
 
       - name: Build the installer
         shell: bash
