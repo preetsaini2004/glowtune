@@ -474,8 +474,9 @@
 
   function keys(e: KeyboardEvent) {
     if (searchOpen) return;
-    // Playback keys: Space / F9 play-pause, F8 previous, F10 next. Space while
-    // typing stays a space; on a focused button it means play/pause too.
+    // Playback keys, matching the media keys printed on most keyboards:
+    // F7 previous, Space / F8 play-pause, F9 next. Space while typing stays a
+    // space; on a focused button it means play/pause too.
     const typing =
       document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
     if (e.key === " " && !typing && !e.repeat) {
@@ -483,9 +484,9 @@
       np.control("playPause");
       return;
     }
-    if (e.key === "F9" || e.key === "F8" || e.key === "F10") {
+    if (e.key === "F7" || e.key === "F8" || e.key === "F9") {
       e.preventDefault();
-      np.control(e.key === "F8" ? "previous" : e.key === "F10" ? "next" : "playPause");
+      np.control(e.key === "F7" ? "previous" : e.key === "F9" ? "next" : "playPause");
       return;
     }
     if (e.key === "Escape") {

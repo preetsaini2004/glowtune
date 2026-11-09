@@ -145,10 +145,10 @@ const shots = {
     async (page, at) => {
       await at(1, () => page.keyboard.press("Space"));
       await page.getByRole("button", { name: "Play", exact: true }).waitFor();
-      await at(2.3, () => page.keyboard.press("F9"));
+      await at(2.3, () => page.keyboard.press("F8"));
       await page.getByRole("button", { name: "Pause", exact: true }).waitFor();
-      await at(3.7, () => page.keyboard.press("F10"));
-      await at(5.2, () => page.keyboard.press("F8"));
+      await at(3.7, () => page.keyboard.press("F9"));
+      await at(5.2, () => page.keyboard.press("F7"));
     },
   ],
   themes: [

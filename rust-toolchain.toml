@@ -1,0 +1,5 @@
+# One Rust version for everyone (local builds and GitHub Actions), so new
+# compiler or lint releases can't break a release build unexpectedly.
+[toolchain]
+channel = "1.96.1"
+components = ["rustfmt", "clippy"]

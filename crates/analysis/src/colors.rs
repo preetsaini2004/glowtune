@@ -72,7 +72,9 @@ pub fn palette_from_rgba(
     rgba: &[u8],
 ) -> Result<GlowPalette, PaletteError> {
     let pixels: Vec<Lab> = rgba
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .take((width * height) as usize)
         .filter(|p| p[3] >= 128)
         .map(|p| emphasize(oklab::from_srgb8([p[0], p[1], p[2]])))

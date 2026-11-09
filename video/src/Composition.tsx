@@ -359,7 +359,7 @@ function Scene({
                   color: "#fff9",
                 }}
               >
-                Space · F8 · F9 · F10
+                F7 · F8 · F9 · Space
               </div>
             )}
           </div>
@@ -457,7 +457,7 @@ export function Clip({ feature }: { feature: Feature }) {
         </div>
         <div style={{ fontSize: 20, color: "#e6e1d9a8" }}>
           {feature === "controls"
-            ? "Space · F8 · F9 · F10"
+            ? "F7 · F8 · F9 · Space"
             : feature === "scene"
               ? "Music video wallpaper · Green by Cavetown"
               : features[feature].caption}

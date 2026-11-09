@@ -58,7 +58,7 @@ See the next songs from the player's own queue, with their covers, and click one
 <img src="docs/media/upnext.webp" width="100%" alt="Up next from the player queue" />
 
 ### Controls everywhere
-- **Space** or **F9**: play / pause. **F8**: previous. **F10**: next. (On many laptops the F keys need the **Fn** key.)
+- **F7**: previous. **F8** or **Space**: play / pause. **F9**: next. (On many laptops the F keys need the **Fn** key.)
 - Hover Glowtune on the taskbar for previous, play / pause and next buttons.
 - Volume, shuffle, repeat and like from the dock.
 - Works with music playing anywhere on your PC, not only inside Glowtune (the desktop Spotify app, a browser tab and more).
@@ -103,6 +103,21 @@ If they match, click **More info → Run anyway**. Never turn off Microsoft Defe
 | Change the lyrics view | Lyrics view toolbar → left / middle / right, Compact / Normal / Large. |
 | Keep the glow on in full-screen games | Scene menu → Light → turn off "Turn off during full-screen games and videos". |
 | Change the look | Settings → Themes, or the Store. |
+
+## Light on your PC
+
+Glowtune is built to sit in the background all day without you noticing it.
+
+Measured on Windows 11 (12-core processor) with music playing, as Task Manager shows it:
+
+| | CPU | RAM |
+|---|---|---|
+| Glowtune core | 0.01 % | 24 MB |
+| Everything on: player, desktop lyrics, edge glow and the desktop scene playing a 1440p music video | **0.1 %** | **about 400 MB** |
+| A music service window (Spotify in this test) | 0.1 % | about 480 MB, like that service in a browser tab |
+
+- **Nothing runs when nothing plays.** No polling and no background work: audio listening and the beat stop as soon as the music pauses.
+- Most of the memory belongs to the windows you open. Turn off the desktop scene or close a service window and Glowtune uses less.
 
 ## Privacy
 
