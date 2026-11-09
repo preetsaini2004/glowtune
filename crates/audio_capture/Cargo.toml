@@ -1,0 +1,18 @@
+[package]
+name = "audio_capture"
+description = "System audio loopback capture (WASAPI loopback / PipeWire monitor)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+cpal = "0.18"
+rtrb = "0.4"
+
+[dev-dependencies]
+analysis = { path = "../analysis" }

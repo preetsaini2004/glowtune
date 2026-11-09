@@ -1,0 +1,10 @@
+target/
+node_modules/
+app/dist/
+app/build/
+.svelte-kit/
+app/src-tauri/gen/schemas/
+*.log
+.DS_Store
+graphify-out/
+run/

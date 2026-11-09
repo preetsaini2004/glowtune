@@ -1,0 +1,38 @@
+# Warm orange embers pulse against smoky dark glass.
+[meta]
+name = "Ember"
+author = "Glowtune"
+version = 1
+
+[colors]
+mode = "static"
+background = "#140b08"
+surface = "#ffffff12"
+text = "#fff3ea"
+accent = "#ff7a3d"
+glow = ["#ff7a3d"]
+
+[glass]
+blur = 24
+opacity = 0.55
+radius = 14
+
+[font]
+family = "Instrument Sans"
+lyrics_family = "Bricolage Grotesque"
+lyrics_size = 50
+
+[glow]
+enabled = true
+thickness = 72
+intensity = 1.15
+beat_reactivity = 0.9
+drift_speed = 0.6
+effect = "pulse"
+corners = "square"
+monitors = "all"
+
+[lyrics]
+style = "karaoke"
+position = "bottom-center"
+show_on_desktop = true

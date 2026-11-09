@@ -1,0 +1,308 @@
+{
+  "version": 1,
+  "packs": [
+    {
+      "id": "after-hours",
+      "kind": "theme",
+      "name": "After hours",
+      "author": "Glowtune",
+      "description": "Violet neon, taxi-light blue. One more track before dawn.",
+      "colors": [
+        "#b58aff",
+        "#55cfff",
+        "#ff63b5"
+      ],
+      "tags": [
+        "night",
+        "neon"
+      ],
+      "toml": "[meta]\nname = \"After hours\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#0d091b\"\nsurface = \"#ffffff18\"\ntext = \"#f5edff\"\naccent = \"#b58aff\"\nglow = [\"#b58aff\",\"#55cfff\",\"#ff63b5\"]\n\n[glass]\nblur = 36\nopacity = 0.5\nradius = 24\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 50\n\n[glow]\neffect = \"orbit\"\neffect_speed = 0.7\nenabled = true\nthickness = 64\nintensity = 1.1\nbeat_reactivity = 0.8\ndrift_speed = 1.6\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "needle-dust",
+      "kind": "theme",
+      "name": "Needle dust",
+      "author": "Glowtune",
+      "description": "Honeyed glass and paper lyrics. A little warmth in the grooves.",
+      "colors": [
+        "#e2ac6a",
+        "#b96c46",
+        "#f1dbb6"
+      ],
+      "tags": [
+        "warm",
+        "vinyl"
+      ],
+      "toml": "[meta]\nname = \"Needle dust\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#20150f\"\nsurface = \"#ffffff18\"\ntext = \"#fae9cd\"\naccent = \"#e2ac6a\"\nglow = [\"#e2ac6a\",\"#b96c46\",\"#f1dbb6\"]\n\n[glass]\nblur = 16\nopacity = 0.76\nradius = 10\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 46\n\n[glow]\neffect = \"still\"\neffect_speed = 1\nenabled = true\nthickness = 50\nintensity = 0.8\nbeat_reactivity = 0.35\ndrift_speed = 0.2\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "control-room",
+      "kind": "theme",
+      "name": "Control room",
+      "author": "Glowtune",
+      "description": "Silver light, smoked glass, nothing in the way.",
+      "colors": [
+        "#dce5eb",
+        "#8295a5"
+      ],
+      "tags": [
+        "mono",
+        "studio"
+      ],
+      "toml": "[meta]\nname = \"Control room\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#101419\"\nsurface = \"#ffffff18\"\ntext = \"#f5f7fa\"\naccent = \"#dce5eb\"\nglow = [\"#dce5eb\",\"#8295a5\"]\n\n[glass]\nblur = 24\nopacity = 0.72\nradius = 4\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 40\n\n[glow]\nenabled = true\nthickness = 32\nintensity = 0.55\nbeat_reactivity = 0.15\ndrift_speed = 0.1\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"top-center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "last-light",
+      "kind": "theme",
+      "name": "Last light",
+      "author": "Glowtune",
+      "description": "Apricot melts into rose. Keep the golden hour playing.",
+      "colors": [
+        "#ffad79",
+        "#ef739e",
+        "#9b85e4"
+      ],
+      "tags": [
+        "sunset",
+        "soft"
+      ],
+      "toml": "[meta]\nname = \"Last light\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#21121b\"\nsurface = \"#ffffff18\"\ntext = \"#fff0e8\"\naccent = \"#ffad79\"\nglow = [\"#ffad79\",\"#ef739e\",\"#9b85e4\"]\n\n[glass]\nblur = 40\nopacity = 0.48\nradius = 28\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 56\n\n[glow]\neffect = \"lava-lamp\"\neffect_speed = 0.6\nenabled = true\nthickness = 82\nintensity = 1\nbeat_reactivity = 0.5\ndrift_speed = 0.65\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "blue-hour",
+      "kind": "theme",
+      "name": "Blue hour",
+      "author": "Glowtune",
+      "description": "Deep-water glass and slow ribbons of electric blue.",
+      "colors": [
+        "#3dd9c4",
+        "#3989ee",
+        "#6670d6"
+      ],
+      "tags": [
+        "ocean",
+        "calm"
+      ],
+      "toml": "[meta]\nname = \"Blue hour\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#051923\"\nsurface = \"#ffffff18\"\ntext = \"#e2fcff\"\naccent = \"#3dd9c4\"\nglow = [\"#3dd9c4\",\"#3989ee\",\"#6670d6\"]\n\n[glass]\nblur = 48\nopacity = 0.6\nradius = 18\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Segoe UI\"\nlyrics_size = 48\n\n[glow]\neffect = \"lava-lamp\"\neffect_speed = 0.8\nenabled = true\nthickness = 74\nintensity = 0.95\nbeat_reactivity = 0.4\ndrift_speed = 0.45\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "sugar-static",
+      "kind": "theme",
+      "name": "Sugar static",
+      "author": "Glowtune",
+      "description": "Lilac candy and pistachio light, with a gentle pop.",
+      "colors": [
+        "#d8b4f4",
+        "#a9e3cb",
+        "#ffc5d3"
+      ],
+      "tags": [
+        "pastel",
+        "playful"
+      ],
+      "toml": "[meta]\nname = \"Sugar static\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#231d30\"\nsurface = \"#ffffff18\"\ntext = \"#fff5ff\"\naccent = \"#d8b4f4\"\nglow = [\"#d8b4f4\",\"#a9e3cb\",\"#ffc5d3\"]\n\n[glass]\nblur = 32\nopacity = 0.55\nradius = 32\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 54\n\n[glow]\neffect = \"ambient\"\neffect_speed = 1\nenabled = true\nthickness = 46\nintensity = 0.75\nbeat_reactivity = 0.3\ndrift_speed = 0.4\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "acid-test",
+      "kind": "theme",
+      "name": "Acid test",
+      "author": "Glowtune",
+      "description": "Hard lime, hot pink, sharp corners. Built for the drop.",
+      "colors": [
+        "#d5ff46",
+        "#ff4aa2",
+        "#f5fff0"
+      ],
+      "tags": [
+        "club",
+        "contrast"
+      ],
+      "toml": "[meta]\nname = \"Acid test\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#090c08\"\nsurface = \"#ffffff18\"\ntext = \"#f7ffe8\"\naccent = \"#d5ff46\"\nglow = [\"#d5ff46\",\"#ff4aa2\",\"#f5fff0\"]\n\n[glass]\nblur = 8\nopacity = 0.85\nradius = 0\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 64\n\n[glow]\neffect = \"distortion\"\neffect_speed = 1.2\nenabled = true\nthickness = 100\nintensity = 1.4\nbeat_reactivity = 1\ndrift_speed = 2.2\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "moss-tape",
+      "kind": "theme",
+      "name": "Moss tape",
+      "author": "Glowtune",
+      "description": "Fern green over dark bark. A slow walk with headphones.",
+      "colors": [
+        "#9dc58b",
+        "#b7a16d",
+        "#537c68"
+      ],
+      "tags": [
+        "forest",
+        "earth"
+      ],
+      "toml": "[meta]\nname = \"Moss tape\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#121b15\"\nsurface = \"#ffffff18\"\ntext = \"#eef2dc\"\naccent = \"#9dc58b\"\nglow = [\"#9dc58b\",\"#b7a16d\",\"#537c68\"]\n\n[glass]\nblur = 28\nopacity = 0.68\nradius = 16\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 44\n\n[glow]\neffect = \"still\"\neffect_speed = 1\nenabled = true\nthickness = 52\nintensity = 0.7\nbeat_reactivity = 0.2\ndrift_speed = 0.25\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+    },
+    {
+      "id": "cinema",
+      "kind": "preset",
+      "name": "Cinema",
+      "author": "Glowtune",
+      "description": "Let the video fill the room. Floating words, a quiet clock.",
+      "colors": [
+        "#b98bdf",
+        "#79adcc"
+      ],
+      "tags": [
+        "video",
+        "immersive"
+      ],
+      "settings": {
+        "stageLyricsStyle": "flow",
+        "stageClockStyle": "minimal",
+        "stageWallpaper": "video",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "customColors": [
+          "#b98bdf",
+          "#79adcc"
+        ]
+      }
+    },
+    {
+      "id": "poster",
+      "kind": "preset",
+      "name": "Poster",
+      "author": "Glowtune",
+      "description": "Big cut-out words and a solid clock in ink and coral.",
+      "colors": [
+        "#ff936f",
+        "#818eff"
+      ],
+      "tags": [
+        "graphic",
+        "bold"
+      ],
+      "settings": {
+        "stageLyricsStyle": "sticker",
+        "stageClockStyle": "solid",
+        "stageWallpaper": "art",
+        "stageMotion": false,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": false,
+        "customColors": [
+          "#ff936f",
+          "#818eff"
+        ]
+      }
+    },
+    {
+      "id": "slow-sunday",
+      "kind": "preset",
+      "name": "Slow Sunday",
+      "author": "Glowtune",
+      "description": "A still artwork wash, soft karaoke and nowhere to rush.",
+      "colors": [
+        "#dab58b",
+        "#a3b49a"
+      ],
+      "tags": [
+        "still",
+        "warm"
+      ],
+      "settings": {
+        "stageLyricsStyle": "karaoke",
+        "stageClockStyle": "minimal",
+        "stageWallpaper": "art",
+        "stageMotion": false,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": false,
+        "customColors": [
+          "#dab58b",
+          "#a3b49a"
+        ]
+      }
+    },
+    {
+      "id": "night-drive",
+      "kind": "preset",
+      "name": "Night drive",
+      "author": "Glowtune",
+      "description": "Outline lettering over drifting cobalt and cherry light.",
+      "colors": [
+        "#558aff",
+        "#fa668a"
+      ],
+      "tags": [
+        "night",
+        "motion"
+      ],
+      "settings": {
+        "stageLyricsStyle": "outline",
+        "stageClockStyle": "outline",
+        "stageWallpaper": "art",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": false,
+        "customColors": [
+          "#558aff",
+          "#fa668a"
+        ]
+      }
+    },
+    {
+      "id": "liner-notes",
+      "kind": "preset",
+      "name": "Liner notes",
+      "author": "Glowtune",
+      "description": "Just the words and the artwork. No clock, no distractions.",
+      "colors": [
+        "#b9cad7",
+        "#8493a6"
+      ],
+      "tags": [
+        "quiet",
+        "lyrics"
+      ],
+      "settings": {
+        "stageLyricsStyle": "flow",
+        "stageClockStyle": "minimal",
+        "stageWallpaper": "art",
+        "stageMotion": false,
+        "stageClock": false,
+        "stageRecent": false,
+        "artworkColors": true,
+        "customColors": [
+          "#b9cad7",
+          "#8493a6"
+        ]
+      }
+    },
+    {
+      "id": "front-row",
+      "kind": "preset",
+      "name": "Front row",
+      "author": "Glowtune",
+      "description": "Bold words on the music video. Bring the performance home.",
+      "colors": [
+        "#e6e88b",
+        "#ea7fa9"
+      ],
+      "tags": [
+        "live",
+        "video"
+      ],
+      "settings": {
+        "stageLyricsStyle": "bold",
+        "stageClockStyle": "solid",
+        "stageWallpaper": "video",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": true,
+        "customColors": [
+          "#e6e88b",
+          "#ea7fa9"
+        ]
+      }
+    }
+  ]
+}

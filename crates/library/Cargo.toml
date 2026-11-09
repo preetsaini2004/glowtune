@@ -1,0 +1,17 @@
+[package]
+name = "library"
+description = "Local music library: tag scanner + SQLite/FTS5 index + folder watcher."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+lofty = "0.25"
+rusqlite = { version = "0.41", features = ["bundled"] }
+notify = "8"
+
+[dev-dependencies]
+tempfile = "3"

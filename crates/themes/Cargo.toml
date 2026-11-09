@@ -1,0 +1,17 @@
+[package]
+name = "themes"
+description = "Theme schema, loading, validation and hot reload."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+serde = { version = "1", features = ["derive"] }
+toml = "1"
+notify = "8"
+
+[dev-dependencies]
+tempfile = "3"

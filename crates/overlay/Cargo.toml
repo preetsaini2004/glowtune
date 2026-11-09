@@ -1,0 +1,21 @@
+[package]
+name = "overlay"
+description = "Native screen-edge glow overlay (winit + wgpu edge strips)."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winit = "0.30"
+wgpu = { version = "30", default-features = false, features = ["std", "parking_lot", "wgsl", "dx12"] }
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+windows = { version = "0.62", features = ["Win32_Foundation", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi", "env-filter"] }

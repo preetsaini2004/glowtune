@@ -1,0 +1,37 @@
+# Quiet violet light through dark midnight glass.
+[meta]
+name = "Midnight Glass"
+author = "Glowtune"
+version = 1
+
+[colors]
+mode = "adaptive"
+background = "#0b0b10"
+surface = "#ffffff14"
+text = "#f5f5f7"
+accent = "#8b7cff"
+glow = ["#8b7cff", "#5ca0ff"]
+
+[glass]
+blur = 24
+opacity = 0.55
+radius = 14
+
+[font]
+family = "Instrument Sans"
+lyrics_family = "Bricolage Grotesque"
+lyrics_size = 50
+
+[glow]
+enabled = true
+thickness = 56
+intensity = 1.0
+beat_reactivity = 0.7
+drift_speed = 0.6
+corners = "rounded"
+monitors = "all"
+
+[lyrics]
+style = "rise"
+position = "bottom-center"
+show_on_desktop = true

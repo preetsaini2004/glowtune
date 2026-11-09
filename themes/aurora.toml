@@ -1,0 +1,39 @@
+# Cool teal and blue ribbons drift across polar glass.
+[meta]
+name = "Aurora"
+author = "Glowtune"
+version = 1
+
+[colors]
+mode = "gradient"
+background = "#07131a"
+surface = "#ffffff14"
+text = "#e9fbff"
+accent = "#3ef0c0"
+glow = ["#3ef0c0", "#5ca0ff", "#a77bff"]
+
+[glass]
+blur = 32
+opacity = 0.45
+radius = 14
+
+[font]
+family = "Instrument Sans"
+lyrics_family = "Bricolage Grotesque"
+lyrics_size = 50
+
+[glow]
+enabled = true
+thickness = 56
+intensity = 1.0
+beat_reactivity = 0.7
+drift_speed = 1.4
+effect = "orbit"
+effect_speed = 0.7
+corners = "rounded"
+monitors = "all"
+
+[lyrics]
+style = "rise"
+position = "bottom-center"
+show_on_desktop = true
