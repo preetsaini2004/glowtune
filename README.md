@@ -108,16 +108,14 @@ If they match, click **More info → Run anyway**. Never turn off Microsoft Defe
 
 Glowtune is built to sit in the background all day without you noticing it.
 
-Measured on Windows 11 (12-core processor) with music playing, as Task Manager shows it:
+Measured on Windows 11 (12-core processor) with music playing and the edge glow on, as Task Manager shows it:
 
 | | CPU | RAM |
 |---|---|---|
-| Glowtune core | 0.01 % | 24 MB |
-| Everything on: player, desktop lyrics, edge glow and the desktop scene playing a 1440p music video | **0.1 %** | **about 400 MB** |
-| A music service window (Spotify in this test) | 0.1 % | about 480 MB, like that service in a browser tab |
+| **Glowtune** (the "Glowtune" row in Task Manager) | **about 1–2 %** | **about 130 MB** |
 
 - **Nothing runs when nothing plays.** No polling and no background work: audio listening and the beat stop as soon as the music pauses.
-- Most of the memory belongs to the windows you open. Turn off the desktop scene or close a service window and Glowtune uses less.
+- Glowtune draws its windows with Microsoft Edge WebView2, like many Windows apps. Windows lists those helpers separately, as "Microsoft Edge WebView2", and they use more while a window is busy: the desktop scene playing a music video, or a music service window (about as much as that service in a browser tab). Turn off the scene's video background or close a service window when you don't need it.
 
 ## Privacy
 
