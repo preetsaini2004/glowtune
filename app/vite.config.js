@@ -1,6 +1,6 @@
 import { defineConfig } from "vite";
 import { sveltekit } from "@sveltejs/kit/vite";
-// @ts-expect-error type error without @types/node package
+// @ts-ignore Node types are optional in the frontend toolchain.
 import process from "node:process";
 const host = process.env.TAURI_DEV_HOST;
 

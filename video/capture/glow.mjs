@@ -39,6 +39,29 @@ export async function installGlow(shader) {
     c < 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
   let prevPalette;
   let fade = 0;
+  const effects = [
+    "ambient",
+    "still",
+    "pulse",
+    "orbit",
+    "distortion",
+    "lava-lamp",
+    "comet",
+    "aurora",
+    "bars",
+    "neon",
+    "tide",
+  ];
+  const particles = [
+    "off",
+    "dots",
+    "stars",
+    "dust",
+    "embers",
+    "snow",
+    "fireflies",
+    "bubbles",
+  ];
   function render() {
     const { status, reportedAtMs, palette, energy } = window.capturePlayback();
     const t = Math.max(0, Date.now() - reportedAtMs) / 1000;
@@ -56,6 +79,27 @@ export async function installGlow(shader) {
     }
     values.set([t, fade, energy ?? Math.exp(-7 * (t % 0.5)), 1.05], 8);
     values[15] = t * 0.029;
+    if (window.captureProduction) {
+      const glow = window.captureGlow();
+      values.set(
+        [
+          effects.indexOf(glow.effect),
+          glow.effect_speed,
+          glow.effect_strength,
+          glow.particle_sparkle,
+        ],
+        16,
+      );
+      values.set(
+        [
+          particles.indexOf(glow.particles),
+          glow.particle_density,
+          glow.particle_size * 2,
+          glow.particle_speed,
+        ],
+        20,
+      );
+    }
     device.queue.writeBuffer(buffer, 0, values);
     const encoder = device.createCommandEncoder();
     const pass = encoder.beginRenderPass({

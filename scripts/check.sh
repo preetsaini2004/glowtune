@@ -27,6 +27,8 @@ if [[ "$what" == "all" || "$what" == "ui" ]]; then
   pnpm -C app check
   step "music metadata extractor"
   node --test app/src-tauri/src/music_snapshot.test.cjs
+  step "emoji words"
+  node --test scripts/emoji.test.ts
   step "vite build"
   pnpm -C app build
 fi

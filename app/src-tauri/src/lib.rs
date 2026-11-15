@@ -9,17 +9,26 @@
 //! running in the tray, and the glow keeps following the music.
 
 mod adblock;
+mod card;
 mod foreground;
 mod glow;
+mod hires;
+mod hotkeys;
 mod hub;
 mod lyrics_gate;
 mod lyrics_service;
 mod music_browser;
+mod osd;
+mod presets;
 mod search;
 mod services;
 mod settings;
+mod sleep;
+mod sound;
 mod stage;
+mod stats;
 mod store;
+mod taskbar;
 mod theme_service;
 #[cfg(windows)]
 mod thumbbar;
@@ -50,7 +59,61 @@ pub const ART_ORIGIN: &str = "glowart://localhost";
 const PLAYER: &str = "player";
 pub(crate) const LYRICS: &str = "lyrics";
 const SETTINGS: &str = "settings";
-const PLAYER_SIZE: (f64, f64) = (480.0, 132.0);
+/// The mini player's size for each look (logical px).
+fn player_size(style: &str, size: &str) -> (f64, f64) {
+    // Small / large scale the whole look (the page zooms to match).
+    let k = match size {
+        "s" => 0.84,
+        "l" => 1.22,
+        _ => 1.0,
+    };
+    let (w, h) = match style {
+        "disc" => (240.0, 240.0),
+        "card" => (300.0, 410.0),
+        "pill" => (380.0, 68.0),
+        "lyric" => (600.0, 104.0),
+        _ => (480.0, 132.0),
+    };
+    (w * k, h * k)
+}
+
+/// Round and capsule looks draw their own shape: no glass rectangle or
+/// square shadow behind them.
+fn player_shaped(style: &str) -> bool {
+    matches!(style, "disc" | "pill")
+}
+
+/// Gives the open player its look's size and glass, keeping its bottom-right
+/// corner where it was (it lives near the taskbar corner).
+fn shape_player(w: &tauri::WebviewWindow, style: &str, size: &str) -> tauri::Result<()> {
+    let scale = w.scale_factor()?;
+    let (lw, lh) = player_size(style, size);
+    let want = tauri::PhysicalSize::new((lw * scale).round() as u32, (lh * scale).round() as u32);
+    let have = w.inner_size()?;
+    if have != want {
+        let pos = w.outer_position()?;
+        let outer = w.outer_size()?;
+        let right = pos.x + outer.width as i32;
+        let bottom = pos.y + outer.height as i32;
+        w.set_size(want)?;
+        let outer = w.outer_size()?;
+        w.set_position(tauri::PhysicalPosition::new(
+            right - outer.width as i32,
+            bottom - outer.height as i32,
+        ))?;
+    }
+    if player_shaped(style) {
+        w.set_effects(None)?;
+        w.set_shadow(false)?;
+    } else {
+        w.set_effects(WindowEffectsConfig {
+            effects: vec![Effect::Acrylic],
+            ..Default::default()
+        })?;
+        w.set_shadow(true)?;
+    }
+    Ok(())
+}
 const LYRICS_SIZE: (f64, f64) = (1200.0, 260.0);
 const SETTINGS_SIZE: (f64, f64) = (780.0, 640.0);
 
@@ -72,6 +135,30 @@ struct MonitorView {
     height: u32,
 }
 
+/// Where to report bugs (Settings → About). Only these two, never a page's URL.
+#[tauri::command]
+fn open_support(to: String) -> Result<(), String> {
+    let url = match to.as_str() {
+        "issues" => "https://github.com/preetsaini2004/glowtune/issues/new",
+        "email" => "mailto:Preet.saini.0@outlook.com?subject=Glowtune%20bug",
+        _ => return Err("unknown link".into()),
+    };
+    std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// A copy of the settings as they are now.
+fn current_settings(app: &AppHandle) -> Settings {
+    app.state::<AppSettings>()
+        .current
+        .lock()
+        .map(|s| s.clone())
+        .unwrap_or_default()
+}
+
 #[tauri::command]
 fn get_settings(settings: State<'_, AppSettings>) -> Settings {
     settings
@@ -84,6 +171,11 @@ fn get_settings(settings: State<'_, AppSettings>) -> Settings {
 /// Play/pause, next or previous from outside the webviews (taskbar buttons):
 /// the service page's own buttons when music plays there, else media controls.
 pub(crate) fn transport(app: AppHandle, action: &'static str) {
+    if action != "playPause"
+        && let Some(sound) = app.try_state::<sound::Sound>()
+    {
+        sound.note_command();
+    }
     tauri::async_runtime::spawn(async move {
         let shared = app.state::<Arc<Shared>>().inner().clone();
         let web = shared
@@ -252,6 +344,18 @@ fn adblock_stats(adblock: State<'_, adblock::AdBlock>) -> u64 {
     adblock.blocked_count()
 }
 
+/// Whether sound effects are processing audio right now, and the current delay.
+#[tauri::command]
+fn sound_status(sound: State<'_, sound::Sound>) -> sound::SoundStatus {
+    sound.status()
+}
+
+/// How many ad-block rules are loaded; 0 means the filter lists are missing.
+#[tauri::command]
+fn adblock_rules(adblock: State<'_, adblock::AdBlock>) -> usize {
+    adblock.rule_count()
+}
+
 /// Opens Spotify, YouTube Music or SoundCloud in the service window.
 #[tauri::command]
 async fn open_service(service: services::Service, app: AppHandle) -> Result<(), String> {
@@ -272,7 +376,42 @@ async fn web_player(
     value: Option<f64>,
     app: AppHandle,
 ) -> Result<Option<services::WebPlayerState>, String> {
-    Ok(services::web_player(&app, &action, value).await)
+    Ok(web_player_at(&app, &action, value).await)
+}
+
+/// The service page's player (state, volume...), as the `web_player` command.
+pub(crate) async fn web_player_at(
+    app: &AppHandle,
+    action: &str,
+    value: Option<f64>,
+) -> Option<services::WebPlayerState> {
+    // With Sound effects on, the page's volume would only be heard after the
+    // delay (up to 34 s): move Glowtune's own volume instead, heard at once.
+    let sound = app.try_state::<sound::Sound>();
+    let Some((sound, gain)) = sound.and_then(|s| s.gain().map(|g| (s, g))) else {
+        return services::web_player(app, action, value).await;
+    };
+    if action != "volume" {
+        let mut state = services::web_player(app, action, value).await;
+        if let Some(s) = &mut state {
+            s.volume = s.volume.map(|page| (page * gain as f64).clamp(0.0, 1.0));
+        }
+        return state;
+    }
+    let mut state = services::web_player(app, "state", None).await?;
+    let wanted = value
+        .filter(|v| v.is_finite())
+        .unwrap_or(1.0)
+        .clamp(0.0, 1.0);
+    match state.volume {
+        // A page turned (almost) all the way down can't be raised by a gain.
+        Some(page) if page >= 0.02 => {
+            sound.set_gain((wanted / page) as f32);
+            state.volume = Some(wanted);
+        }
+        _ => return services::web_player(app, "volume", Some(wanted)).await,
+    }
+    Some(state)
 }
 
 /// "Move lyrics": `on` makes the desktop lyrics draggable (shown with a sample
@@ -323,6 +462,16 @@ async fn music_video(
     duration_ms: Option<f64>,
 ) -> Result<Option<String>, String> {
     search::music_video_cached(&title, &artist, duration_ms).await
+}
+
+/// A big copy of the current song's cover (glowart URL), if one is found.
+#[tauri::command]
+async fn hires_art(
+    title: String,
+    artist: String,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
+    Ok(hires::hires_art(&app, &title, &artist).await)
 }
 
 /// Opens `service` on its own search page for `query`.
@@ -384,6 +533,12 @@ fn get_history(shared: State<'_, Arc<Shared>>) -> Vec<hub::HistoryItem> {
         .unwrap_or_default()
 }
 
+/// Brings up the mini player (the taskbar player's song button).
+#[tauri::command]
+async fn show_player_window(app: AppHandle) -> Result<(), String> {
+    show_player(&app).map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn open_settings(app: AppHandle) -> Result<(), String> {
     show_settings(&app).map_err(|e| e.to_string())
@@ -393,7 +548,17 @@ async fn open_settings(app: AppHandle) -> Result<(), String> {
 async fn open_settings_tab(tab: String, app: AppHandle) -> Result<(), String> {
     if !matches!(
         tab.as_str(),
-        "lyrics" | "scene" | "glow" | "services" | "themes" | "store" | "player" | "about"
+        "lyrics"
+            | "scene"
+            | "glow"
+            | "sound"
+            | "services"
+            | "themes"
+            | "store"
+            | "player"
+            | "listening"
+            | "keys"
+            | "about"
     ) {
         return Err("Unknown settings section.".into());
     }
@@ -432,7 +597,10 @@ fn apply_settings(app: &AppHandle, s: &Settings) -> tauri::Result<()> {
     }
     if let Some(w) = app.get_webview_window(PLAYER) {
         w.set_always_on_top(s.player_on_top)?;
+        shape_player(&w, &s.player_style, &s.player_size)?;
     }
+    taskbar::apply(app, &s.taskbar_player)?;
+    hotkeys::set_enabled(app, s.hotkeys);
     if s.stage_enabled {
         stage::show(app, &s.stage_monitor)?;
     } else {
@@ -445,6 +613,9 @@ fn apply_settings(app: &AppHandle, s: &Settings) -> tauri::Result<()> {
     }
     if let Some(g) = app.try_state::<lyrics_gate::LyricsGate>() {
         g.changed();
+    }
+    if let Some(sound) = app.try_state::<sound::Sound>() {
+        sound.configure(s);
     }
     Ok(())
 }
@@ -533,12 +704,37 @@ fn nudge_lyrics(
 }
 
 #[tauri::command]
-fn get_state(shared: State<'_, Arc<Shared>>) -> Snapshot {
-    shared
+fn get_state(app: AppHandle, shared: State<'_, Arc<Shared>>) -> Snapshot {
+    let mut snapshot = shared
         .snapshot
         .lock()
         .map(|s| s.clone())
-        .unwrap_or_default()
+        .unwrap_or_default();
+    snapshot.playback = hub::heard_playback(&app, snapshot.playback);
+    snapshot
+}
+
+/// The equalizer presets, for the Sound settings and the scene's quick menu.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+struct EqPreset {
+    id: &'static str,
+    name: &'static str,
+    preamp: f32,
+    gains: [f32; 10],
+}
+
+#[tauri::command]
+fn eq_presets() -> Vec<EqPreset> {
+    audio_engine::PRESETS
+        .iter()
+        .map(|&(id, name, preamp, gains)| EqPreset {
+            id,
+            name,
+            preamp,
+            gains,
+        })
+        .collect()
 }
 
 /// `action`: "playPause" | "next" | "previous" | "seek" (`positionMs`) |
@@ -561,6 +757,12 @@ async fn control(
         .ok()
         .and_then(|s| s.track.as_ref().map(|t| t.source == "Web player"))
         .unwrap_or(false);
+    // A song change right after this is the user's doing, not the song ending.
+    if matches!(action.as_str(), "next" | "previous" | "seek")
+        && let Some(sound) = app.try_state::<sound::Sound>()
+    {
+        sound.note_command();
+    }
     if web
         && matches!(action.as_str(), "playPause" | "next" | "previous")
         && services::web_transport(&app, &action).await
@@ -595,13 +797,34 @@ async fn control(
     Ok(())
 }
 
+/// Shows the mini player, or closes it when it's already in front. True = shown.
+fn toggle_player(app: &AppHandle) -> bool {
+    if let Some(w) = app.get_webview_window(PLAYER)
+        && w.is_visible().unwrap_or(false)
+        && !w.is_minimized().unwrap_or(false)
+    {
+        let _ = w.close();
+        return false;
+    }
+    if let Err(e) = show_player(app) {
+        tracing::warn!("mini player: {e}");
+    }
+    true
+}
+
 fn show_player(app: &AppHandle) -> tauri::Result<()> {
     if let Some(w) = app.get_webview_window(PLAYER) {
         w.unminimize()?;
         w.show()?;
         return w.set_focus();
     }
-    let (w, h) = PLAYER_SIZE;
+    let (style, size) = app
+        .state::<AppSettings>()
+        .current
+        .lock()
+        .map(|s| (s.player_style.clone(), s.player_size.clone()))
+        .unwrap_or_default();
+    let (w, h) = player_size(&style, &size);
     let builder = WebviewWindowBuilder::new(app, PLAYER, WebviewUrl::App("/".into()))
         .title("Glowtune")
         .inner_size(w, h)
@@ -622,6 +845,10 @@ fn show_player(app: &AppHandle) -> tauri::Result<()> {
             ..Default::default()
         });
     let window = builder.build()?;
+    if player_shaped(&style) {
+        window.set_effects(None)?;
+        window.set_shadow(false)?;
+    }
     // Bottom-right of the primary screen, just above the taskbar. Set after
     // creation in physical pixels (the builder's logical position was ignored
     // with a second monitor at negative coordinates).
@@ -760,6 +987,22 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
     let sc = MenuItem::with_id(app, "service:soundcloud", "SoundCloud", true, None::<&str>)?;
     let services =
         tauri::menu::Submenu::with_items(app, "Open service", true, &[&sp, &am, &yt, &sc])?;
+    let sleep_items = [
+        ("sleep:off", "Off"),
+        ("sleep:15", "15 minutes"),
+        ("sleep:30", "30 minutes"),
+        ("sleep:45", "45 minutes"),
+        ("sleep:60", "1 hour"),
+        ("sleep:0", "After this song"),
+    ]
+    .into_iter()
+    .map(|(id, name)| MenuItem::with_id(app, id, name, true, None::<&str>))
+    .collect::<tauri::Result<Vec<_>>>()?;
+    let sleep_refs: Vec<&dyn tauri::menu::IsMenuItem<tauri::Wry>> = sleep_items
+        .iter()
+        .map(|i| i as &dyn tauri::menu::IsMenuItem<tauri::Wry>)
+        .collect();
+    let sleep = tauri::menu::Submenu::with_items(app, "Sleep timer", true, &sleep_refs)?;
     let menu = Menu::with_items(
         app,
         &[
@@ -768,6 +1011,7 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             &scene,
             &lyrics,
             &move_lyrics,
+            &sleep,
             &settings,
             &separator,
             &quit,
@@ -804,6 +1048,12 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
                     Ok(())
                 }
                 "settings" => show_settings(app),
+                id if id.starts_with("sleep:") => {
+                    let minutes = id["sleep:".len()..].parse::<u32>().ok();
+                    let view = sleep::set(app, minutes);
+                    osd::show(app, osd::Toast::new("sleep", sleep::describe(&view)));
+                    Ok(())
+                }
                 id if id.starts_with("service:") => {
                     match services::Service::from_id(&id["service:".len()..]) {
                         Some(service) => services::show(app, service),
@@ -873,7 +1123,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-                "glowtune=info,glowtune_lib=info,overlay=info,media_source=warn".into()
+                "glowtune=info,glowtune_lib=info,audio_engine=info,overlay=info,media_source=warn".into()
             }),
         )
         .init();
@@ -916,12 +1166,31 @@ pub fn run() {
             music_browser::open_music_item,
             music_browser::open_music_library,
             music_video,
+            hires_art,
+            presets::save_scene_preset,
+            presets::delete_scene_preset,
+            presets::apply_scene_preset,
+            glow::want_kicks,
+            open_support,
+            hotkeys::hotkey_list,
+            sleep::set_sleep_timer,
+            sleep::get_sleep_timer,
+            osd::last_toast,
+            osd::toast,
+            card::save_lyric_card,
+            stats::listening_stats,
+            stats::clear_listening,
+            taskbar::taskbar_visible,
+            show_player_window,
             get_volume,
             lyrics_move,
             lyrics_reset_position,
             web_player,
             get_history,
             adblock_stats,
+            adblock_rules,
+            sound_status,
+            eq_presets,
             list_themes,
             active_theme_id,
             get_theme,
@@ -934,8 +1203,15 @@ pub fn run() {
         ])
         .setup(|app| {
             app.manage(store::Store::default());
+            app.manage(taskbar::TaskbarState::default());
+            app.manage(sleep::SleepTimer::default());
+            app.manage(stats::Listening::new(
+                app.path().app_data_dir()?.join("listening.jsonl"),
+            ));
+            app.manage(osd::LastToast::default());
             let path = app.path().app_config_dir()?.join("settings.json");
             let settings = Settings::load(&path);
+            app.manage(sound::Sound::new(app.handle().clone(), &settings));
             app.manage(lyrics_gate::LyricsGate::start(app.handle().clone()));
             app.manage(stage::StageGate::start(app.handle().clone()));
             app.manage(adblock::AdBlock::start(
@@ -978,7 +1254,15 @@ pub fn run() {
                 stage_item: Mutex::new(None),
             });
             build_tray(app.handle())?;
+            hotkeys::start(app.handle(), current_settings(app.handle()).hotkeys);
             show_player(app.handle())?;
+            let taskbar_side = app
+                .state::<AppSettings>()
+                .current
+                .lock()
+                .map(|s| s.taskbar_player.clone())
+                .unwrap_or_default();
+            taskbar::apply(app.handle(), &taskbar_side)?;
             set_lyrics_visible(app.handle(), lyrics_on)?;
             if stage_on.0 {
                 stage::show(app.handle(), &stage_on.1)?;
@@ -1009,7 +1293,13 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building Glowtune");
 
-    app.run(|_app, event| {
+    app.run(|app, event| {
+        // The song playing when Glowtune quits still counts.
+        if let RunEvent::Exit = event
+            && let Some(l) = app.try_state::<stats::Listening>()
+        {
+            l.flush();
+        }
         // Closing the last window keeps Glowtune running in the tray.
         // Only "Quit" (an explicit exit code) really exits.
         if let RunEvent::ExitRequested {

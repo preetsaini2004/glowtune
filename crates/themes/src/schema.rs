@@ -93,6 +93,16 @@ pub enum GlowEffect {
     Distortion,
     /// Soft moving blobs that merge and separate.
     LavaLamp,
+    /// Two bright heads racing round the edge, each with a long fading tail.
+    Comet,
+    /// Curtains of light folding slowly along the edge, like the northern lights.
+    Aurora,
+    /// The edge as a ring of equalizer bars, jumping with the music.
+    Bars,
+    /// A thin bright tube just inside the edge, with the odd flicker.
+    Neon,
+    /// Swells rolling up the sides of the screen like a tide.
+    Tide,
 }
 
 /// Appearance of optional light-synchronized particles.
@@ -108,6 +118,14 @@ pub enum ParticleStyle {
     Stars,
     /// Soft floating dust motes.
     Dust,
+    /// Warm sparks rising and flickering.
+    Embers,
+    /// Slow flakes drifting down.
+    Snow,
+    /// Wandering lights that glow and fade one by one.
+    Fireflies,
+    /// Hollow rings floating up.
+    Bubbles,
 }
 
 /// Shape of screen-edge glow corners.

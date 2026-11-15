@@ -1,0 +1,28 @@
+[package]
+name = "audio_engine"
+description = "Sound effects for the service windows: process audio capture, EQ, crossfade, playback."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+signalsmith-stretch = { path = "../../vendor/signalsmith-stretch" }
+realfft = "3.5"
+
+[target.'cfg(windows)'.dependencies]
+# Small WASAPI wrapper (same `windows` version as the rest of the workspace);
+# gives process loopback capture and shared-mode playback.
+wasapi = "0.27"
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Media_Audio",
+    "Win32_System_Com",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_Threading",
+] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", default-features = false, features = ["fmt", "ansi"] }

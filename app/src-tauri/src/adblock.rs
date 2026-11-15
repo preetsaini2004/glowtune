@@ -52,6 +52,12 @@ impl AdBlock {
                     tracing::info!("filter lists updated: {:?}", report.updated);
                     handle.rebuild(&cache);
                 }
+                // Never fail silently: an empty blocker blocks nothing.
+                if handle.rule_count() == 0 {
+                    tracing::warn!(
+                        "ad block has no rules: the filter lists are not cached and could not be downloaded"
+                    );
+                }
             })
             .expect("spawn ad block thread");
         this
@@ -84,23 +90,57 @@ impl AdBlock {
     pub fn blocked_count(&self) -> u64 {
         self.current().blocked_count()
     }
+
+    /// How many filter rules are loaded (0 = the lists never arrived).
+    pub fn rule_count(&self) -> usize {
+        self.current().rule_count()
+    }
 }
 
 /// Ad-slot stripping + skip backup for YouTube Music (see the file's header).
-#[cfg(windows)]
 const YOUTUBE_ADS: &str = include_str!("youtube_ads.js");
 
-/// Hooks a service webview: network blocking + cosmetic CSS.
+/// Silences and fast-forwards Spotify's audio ads (see the file's header).
+const SPOTIFY_ADS: &str = include_str!("spotify_ads.js");
+
+/// Scripts for a service's pages: the hiding rules for its site, plus the
+/// service's own ad script. They must be registered **before** the window
+/// starts loading (`WebviewWindowBuilder::initialization_script`): added
+/// afterwards they miss the first page, and these sites never load a second.
+pub fn page_scripts(adblock: &AdBlock, home_url: &str) -> Vec<String> {
+    let css = adblock.current().site_css(home_url);
+    // Only on the service's own pages (not on Google / SoundCloud sign-in pages).
+    let host = home_url
+        .split("//")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("");
+    let host_json = serde_json::to_string(host).unwrap_or_else(|_| "\"\"".into());
+    let css_json = serde_json::to_string(&css).unwrap_or_else(|_| "\"\"".into());
+    let mut scripts = vec![format!(
+        "(() => {{ const css = {css_json}; if (!css || location.hostname !== {host_json}) return; const add = () => {{ \
+         if (document.getElementById('glowtune-adblock')) return; const s = document.createElement('style'); \
+         s.id = 'glowtune-adblock'; s.textContent = css; (document.head || document.documentElement).appendChild(s); }}; \
+         if (document.documentElement) add(); else document.addEventListener('DOMContentLoaded', add); }})();"
+    )];
+    match host {
+        // YouTube Music's video ads share servers with the music: page-level fix.
+        "music.youtube.com" => scripts.push(YOUTUBE_ADS.to_string()),
+        // Spotify's audio ads too.
+        "open.spotify.com" => scripts.push(SPOTIFY_ADS.to_string()),
+        _ => {}
+    }
+    scripts
+}
+
+/// Hooks a service webview: network blocking. (The page scripts are added
+/// when the window is built, see [`page_scripts`].)
 #[cfg(windows)]
-pub fn install(
-    window: &tauri::WebviewWindow,
-    adblock: AdBlock,
-    home_url: &'static str,
-) -> tauri::Result<()> {
+pub fn install(window: &tauri::WebviewWindow, adblock: AdBlock) -> tauri::Result<()> {
     use adblock_layer::ResourceKind;
     use webview2_com::Microsoft::Web::WebView2::Win32::*;
     use webview2_com::{WebResourceRequestedEventHandler, take_pwstr};
-    use windows::core::{HSTRING, PWSTR, w};
+    use windows::core::{PWSTR, w};
 
     fn kind(ctx: COREWEBVIEW2_WEB_RESOURCE_CONTEXT) -> ResourceKind {
         match ctx {
@@ -118,32 +158,10 @@ pub fn install(
         }
     }
 
-    // Element hiding for the service's pages, injected before page scripts run.
-    let css = adblock.current().site_css(home_url);
-    // Only on the service's own pages (not on Google / SoundCloud sign-in pages).
-    let host = home_url
-        .split("//")
-        .nth(1)
-        .and_then(|rest| rest.split('/').next())
-        .unwrap_or("")
-        .to_string();
-    let host_json = serde_json::to_string(&host).unwrap_or_else(|_| "\"\"".into());
-    let css_json = serde_json::to_string(&css).unwrap_or_else(|_| "\"\"".into());
-    let script = format!(
-        "(() => {{ const css = {css_json}; if (!css || location.hostname !== {host_json}) return; const add = () => {{ const s = document.createElement('style'); \
-         s.id = 'glowtune-adblock'; s.textContent = css; (document.head || document.documentElement).appendChild(s); }}; \
-         if (document.documentElement) add(); else document.addEventListener('DOMContentLoaded', add); }})();"
-    );
-
     window.with_webview(move |webview| unsafe {
         let result = (|| -> windows::core::Result<()> {
             let core = webview.controller().CoreWebView2()?;
             let env = webview.environment();
-            core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(script.as_str()), None)?;
-            // YouTube Music's video ads share servers with the music: page-level fix.
-            if host == "music.youtube.com" {
-                core.AddScriptToExecuteOnDocumentCreated(&HSTRING::from(YOUTUBE_ADS), None)?;
-            }
             core.AddWebResourceRequestedFilter(w!("*"), COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL)?;
             let mut token = 0i64;
             core.add_WebResourceRequested(
@@ -179,6 +197,6 @@ pub fn install(
 }
 
 #[cfg(not(windows))]
-pub fn install(_: &tauri::WebviewWindow, _: AdBlock, _: &'static str) -> tauri::Result<()> {
+pub fn install(_: &tauri::WebviewWindow, _: AdBlock) -> tauri::Result<()> {
     Ok(()) // WebKitGTK content filters come with the Linux port.
 }

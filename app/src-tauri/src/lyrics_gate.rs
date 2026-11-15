@@ -91,10 +91,17 @@ fn apply(app: &AppHandle, playing: bool) {
             .try_state::<crate::AppSettings>()
             .and_then(|s| s.current.lock().ok().map(|s| s.stage_lyrics))
             .unwrap_or(false);
+    // Over a game only when asked to (Settings → Lyrics). Works for games in
+    // borderless / windowed full screen; nothing can draw over exclusive
+    // full screen.
+    let over_fullscreen = app
+        .try_state::<crate::AppSettings>()
+        .and_then(|s| s.current.lock().ok().map(|s| s.lyrics_over_fullscreen))
+        .unwrap_or(false);
     let want = playing
         && synced
         && !scene_has_lyrics
-        && !main_screen_covered(app)
+        && (over_fullscreen || !main_screen_covered(app))
         && !player_fills_main_screen(app);
     let shown = window.is_visible().unwrap_or(false);
     if want != shown {

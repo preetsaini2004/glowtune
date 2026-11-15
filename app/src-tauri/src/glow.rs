@@ -8,10 +8,13 @@
 //!
 //!  beat thread (only while playing):
 //!   LoopbackCapture ─samples─► BeatDetector ─energy (60/s)─► Overlay::set_energy
+//!                                            └─kick (onset)─► on_kick (≤ 8/s, only
+//!                                              while a wallpaper asked: WANT_KICKS)
 //! ```
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
@@ -22,6 +25,31 @@ use overlay::{Overlay, OverlayConfig};
 const PALETTE_CACHE: usize = 32;
 /// How often the beat thread drains captured audio while playing.
 const BEAT_POLL: Duration = Duration::from_millis(16);
+/// Kicks closer together than this are one kick (rolls, double hits).
+const KICK_GAP: Duration = Duration::from_millis(120);
+
+/// True while a scene wallpaper reacts to the beat; otherwise kicks aren't sent.
+pub static WANT_KICKS: AtomicBool = AtomicBool::new(false);
+
+/// Called on each kick with its strength (0..1), on the beat thread.
+pub type OnKick = Box<dyn Fn(f32) + Send>;
+
+/// Scene windows whose wallpaper wants kicks right now.
+static KICK_WINDOWS: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+/// A scene window's wallpaper starts (`on`) or stops reacting to the beat.
+#[tauri::command]
+pub fn want_kicks(on: bool, window: tauri::Window) {
+    let Ok(mut list) = KICK_WINDOWS.lock() else {
+        return;
+    };
+    let label = window.label().to_string();
+    list.retain(|l| *l != label);
+    if on {
+        list.push(label);
+    }
+    WANT_KICKS.store(!list.is_empty(), Ordering::Relaxed);
+}
 
 pub struct Glow {
     overlay: Arc<Overlay>,
@@ -31,13 +59,13 @@ pub struct Glow {
 }
 
 impl Glow {
-    pub fn start(config: OverlayConfig) -> Result<Self, String> {
+    pub fn start(config: OverlayConfig, on_kick: OnKick) -> Result<Self, String> {
         let overlay = Arc::new(Overlay::spawn(config).map_err(|e| format!("glow overlay: {e}"))?);
         let (beat, rx) = mpsc::channel();
         let beat_overlay = overlay.clone();
         let beat_thread = std::thread::Builder::new()
             .name("glowtune-beat".into())
-            .spawn(move || beat_loop(rx, beat_overlay))
+            .spawn(move || beat_loop(rx, beat_overlay, on_kick))
             .map_err(|e| e.to_string())?;
         Ok(Self {
             overlay,
@@ -82,8 +110,9 @@ impl Glow {
 
 /// Captures system audio only while something plays, and feeds beat energy
 /// to the glow. While paused it blocks on the channel: no capture, no CPU.
-fn beat_loop(control: Receiver<bool>, overlay: Arc<Overlay>) {
+fn beat_loop(control: Receiver<bool>, overlay: Arc<Overlay>, on_kick: OnKick) {
     let mut playing = false;
+    let mut last_kick = Instant::now();
     loop {
         if !playing {
             match control.recv() {
@@ -119,13 +148,23 @@ fn beat_loop(control: Receiver<bool>, overlay: Arc<Overlay>) {
             capture.read(&mut buf);
             // Run every analysis in the chunk and keep the strongest, so a
             // kick that falls between two polls is never lost.
-            let peak = buf
-                .chunks(256)
-                .filter_map(|c| detector.push(c))
-                .map(|f| f.energy)
-                .reduce(f32::max);
+            let mut peak: Option<f32> = None;
+            let mut kick: Option<f32> = None;
+            for f in buf.chunks(256).filter_map(|c| detector.push(c)) {
+                peak = Some(peak.map_or(f.energy, |p| p.max(f.energy)));
+                if f.onset {
+                    kick = Some(kick.map_or(f.energy, |k| k.max(f.energy)));
+                }
+            }
             if let Some(energy) = peak {
                 overlay.set_energy(energy);
+            }
+            if let Some(k) = kick
+                && WANT_KICKS.load(Ordering::Relaxed)
+                && last_kick.elapsed() >= KICK_GAP
+            {
+                last_kick = Instant::now();
+                on_kick(k.clamp(0.0, 1.0));
             }
         }
     }

@@ -171,7 +171,11 @@ impl LyricsService {
         }
         self.publish(app, Some(key.clone()), LyricsView::empty("loading"));
 
-        let Some(client) = self.client.clone() else {
+        // Ads (Spotify free) and blank titles have no lyrics to look up.
+        let ad = title.trim().is_empty()
+            || title.trim().eq_ignore_ascii_case("advertisement")
+            || artist.trim().is_empty() && title.trim().eq_ignore_ascii_case("spotify");
+        let Some(client) = self.client.clone().filter(|_| !ad) else {
             self.publish(app, Some(key), LyricsView::empty("none"));
             return;
         };
@@ -223,6 +227,41 @@ impl LyricsService {
                 this.publish(&app, Some(key), view);
             }
         });
+    }
+
+    /// The current song's synced lines, for automatic alignment: only while
+    /// its timing is untouched (no nudge saved, not aligned already).
+    pub fn alignable(&self) -> Option<(String, Vec<audio_engine::voice::Line>)> {
+        let current = self.current.lock().ok()?;
+        let (Some(key), view) = &*current else {
+            return None;
+        };
+        if view.status != "synced" || view.offset_ms != 0 {
+            return None;
+        }
+        let lines = view
+            .lines
+            .iter()
+            .map(|l| audio_engine::voice::Line {
+                time_ms: l.time_ms,
+                sung: !l.text.trim().is_empty(),
+            })
+            .collect();
+        Some((key.clone(), lines))
+    }
+
+    /// Automatic alignment found the lyrics off by `offset_ms` (positive:
+    /// show them earlier). For this session only, not saved: the next play
+    /// is measured again. A nudge on top saves the sum.
+    pub fn align(&self, app: &AppHandle, key: &str, offset_ms: i64) {
+        let Ok((current, mut view)) = self.current.lock().map(|c| c.clone()) else {
+            return;
+        };
+        if current.as_deref() != Some(key) {
+            return;
+        }
+        view.offset_ms += offset_ms;
+        self.publish(app, current, view);
     }
 
     /// Shifts the current song's lyrics timing and remembers it.

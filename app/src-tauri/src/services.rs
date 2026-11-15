@@ -150,10 +150,14 @@ pub fn show_at(app: &AppHandle, service: Service, url: Option<String>) -> tauri:
     }
 }
 
-/// WebView2 error 0x800700AA: "The requested resource is in use".
+/// Errors that go away a moment after the previous service window closed:
+/// WebView2 error 0x800700AA ("The requested resource is in use"), and the
+/// old window still holding the `service` label while it is being destroyed.
 fn is_profile_busy(e: &tauri::Error) -> bool {
     let text = e.to_string();
-    text.contains("800700AA") || text.contains("resource is in use")
+    text.contains("800700AA")
+        || text.contains("resource is in use")
+        || text.contains("already exists")
 }
 
 fn build(app: &AppHandle, service: Service, start: Option<&str>) -> tauri::Result<()> {
@@ -165,7 +169,21 @@ fn build(app: &AppHandle, service: Service, start: Option<&str>) -> tauri::Resul
         .app_local_data_dir()?
         .join("services")
         .join(service.id());
-    let window = WebviewWindowBuilder::new(app, SERVICE, WebviewUrl::External(url))
+    let block_ads = app
+        .state::<crate::AppSettings>()
+        .current
+        .lock()
+        .map(|s| s.block_ads)
+        .unwrap_or(true);
+    let adblock = app.state::<crate::adblock::AdBlock>().inner().clone();
+    let mut builder = WebviewWindowBuilder::new(app, SERVICE, WebviewUrl::External(url));
+    if block_ads {
+        // Before the first page loads, or they would miss it.
+        for script in crate::adblock::page_scripts(&adblock, service.url()) {
+            builder = builder.initialization_script(script);
+        }
+    }
+    let window = builder
         .title(format!("{} · Glowtune", service.title()))
         .inner_size(1120.0, 760.0)
         .min_inner_size(640.0, 480.0)
@@ -175,6 +193,9 @@ fn build(app: &AppHandle, service: Service, start: Option<&str>) -> tauri::Resul
         .data_directory(profile)
         .disable_drag_drop_handler()
         .additional_browser_args(BROWSER_ARGS)
+        .initialization_script(INPUT_TRACKER)
+        // Fast fill for the blend's delay (see media_rate.js and sound.rs).
+        .initialization_script(MEDIA_RATE)
         .on_new_window(move |url, _| popup(service, &url))
         .on_page_load(move |w, payload| {
             if payload.event() != PageLoadEvent::Finished {
@@ -194,22 +215,80 @@ fn build(app: &AppHandle, service: Service, start: Option<&str>) -> tauri::Resul
             }
         })
         .build()?;
-    let block_ads = app
-        .state::<crate::AppSettings>()
-        .current
-        .lock()
-        .map(|s| s.block_ads)
-        .unwrap_or(true);
     if block_ads {
-        crate::adblock::install(
-            &window,
-            app.state::<crate::adblock::AdBlock>().inner().clone(),
-            service.url(),
-        )?;
+        crate::adblock::install(&window, adblock)?;
     }
+    // Sound effects follow the window: on while it lives, off when it closes.
+    let sound_app = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed)
+            && let Some(sound) = sound_app.try_state::<crate::sound::Sound>()
+        {
+            sound.window_closed();
+        }
+    });
+    report_browser_process(app, &window);
     tracing::info!("opened {}", service.title());
     Ok(())
 }
+
+/// Remembers when the user last clicked or typed in the service page, so a
+/// song change right after it counts as "the user skipped" (see `hub`).
+const MEDIA_RATE: &str = include_str!("media_rate.js");
+
+const INPUT_TRACKER: &str = r#"(() => {
+  if (window.top !== window) return;
+  const mark = (e) => { if (e.isTrusted) window.__glowtuneInput = performance.now(); };
+  addEventListener('pointerdown', mark, true);
+  addEventListener('keydown', mark, true);
+})();"#;
+
+/// Milliseconds since the user last clicked or typed in the service page
+/// (`None`: no window, or never).
+pub(crate) fn since_page_input(app: &AppHandle) -> Option<f64> {
+    let window = app.get_webview_window(SERVICE)?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    run_script(
+        &window,
+        "window.__glowtuneInput ? performance.now() - window.__glowtuneInput : null".into(),
+        tx,
+    )
+    .ok()?;
+    rx.recv_timeout(std::time::Duration::from_millis(400))
+        .ok()?
+        .parse()
+        .ok()
+}
+
+/// Tells the sound engine which process tree plays this window's audio.
+#[cfg(windows)]
+fn report_browser_process(app: &AppHandle, window: &tauri::WebviewWindow) {
+    let app = app.clone();
+    let result = window.with_webview(move |webview| {
+        let mut pid = 0u32;
+        // SAFETY: COM call on the webview's own thread, inside with_webview.
+        let ok = unsafe {
+            webview
+                .controller()
+                .CoreWebView2()
+                .and_then(|core| core.BrowserProcessId(&mut pid))
+        };
+        match ok {
+            Ok(()) if pid != 0 => {
+                if let Some(sound) = app.try_state::<crate::sound::Sound>() {
+                    sound.window_opened(pid);
+                }
+            }
+            _ => tracing::warn!("sound effects: the service window's process is unknown"),
+        }
+    });
+    if let Err(e) = result {
+        tracing::warn!("sound effects: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+fn report_browser_process(_app: &AppHandle, _window: &tauri::WebviewWindow) {}
 
 /// A page asked for a new window (`window.open`, `target="_blank"` links).
 ///
@@ -437,7 +516,9 @@ pub(crate) fn run_script(
                 core.ExecuteScript(
                     &HSTRING::from(js.as_str()),
                     &ExecuteScriptCompletedHandler::create(Box::new(move |error, result| {
-                        let _ = tx.send(if error.is_ok() { result } else { "null".into() });
+                        // A failed script (the page navigating) sends nothing readable,
+                        // not "null": callers must not take it for "the page said no".
+                        let _ = tx.send(if error.is_ok() { result } else { String::new() });
                         Ok(())
                     })),
                 )

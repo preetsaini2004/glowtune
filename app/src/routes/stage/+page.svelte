@@ -18,12 +18,15 @@
   import { np, formatTime } from "$lib/nowPlaying.svelte";
   import { LyricsFollower } from "$lib/lyrics.svelte";
   import StageLyrics from "$lib/StageLyrics.svelte";
+  import SilkWall, { type Hole } from "$lib/SilkWall.svelte";
+  import ArtWall, { type Look } from "$lib/ArtWall.svelte";
   import SceneMenu, { type SceneSettings } from "$lib/SceneMenu.svelte";
   import PlayerControls from "$lib/PlayerControls.svelte";
   import MusicBrowser from "$lib/MusicBrowser.svelte";
   import UpNext from "$lib/UpNext.svelte";
+  import { saveLyricCard } from "$lib/lyricCard";
 
-  type LyricsStyle = "flow" | "bold" | "karaoke" | "outline" | "sticker";
+  type LyricsStyle = "flow" | "bold" | "karaoke" | "outline" | "sticker" | "stars" | "depth" | "rain" | "orbit";
   type Settings = SceneSettings & { stageEnabled: boolean; stageLyricsStyle: LyricsStyle };
   type HistoryItem = { title: string; artist: string; source: string; artUrl: string | null };
   type ServiceId = "spotify" | "apple-music" | "youtube-music" | "soundcloud";
@@ -213,6 +216,28 @@
     layout = {};
     saveLayout();
   }
+  // ── Presets ── a saved look carries this page's layout along with the
+  // settings; applying one puts every block back (on every screen).
+  type SavedLayout = { blocks?: Partial<Record<Block, Pos>>; cinema?: boolean; cineSide?: CineSide; cineSize?: CineSize };
+  function layoutNow(): SavedLayout {
+    return { blocks: $state.snapshot(layout), cinema, cineSide, cineSize };
+  }
+  function restoreLayout(v: SavedLayout | null) {
+    if (!v || typeof v !== "object") return;
+    const blocks = v.blocks && typeof v.blocks === "object" ? v.blocks : {};
+    layout = Object.fromEntries(
+      Object.entries(blocks).filter(([id, p]) => id in BLOCK_NAMES && p && typeof p.x === "number" && typeof p.y === "number"),
+    );
+    saveLayout();
+    cinema = v.cinema === true;
+    try {
+      localStorage.setItem("glowtune.cinema", cinema ? "1" : "0");
+    } catch {}
+    if (v.cineSide && SIDES.some((s) => s.id === v.cineSide)) cineSide = v.cineSide;
+    if (v.cineSize && SIZES.some((s) => s.id === v.cineSize)) cineSize = v.cineSize;
+    saveCine();
+    editing = false;
+  }
 
   function toggleCinema() {
     cinema = !cinema;
@@ -280,6 +305,15 @@
     return () => clearInterval(id);
   });
 
+  // Ctrl+Alt+C (or the menu): a lyric card of the line being sung.
+  async function makeCard() {
+    try {
+      await saveLyricCard(lyr, bigArt);
+    } catch (e) {
+      invoke("toast", { icon: "card", text: e instanceof Error ? e.message : String(e) }).catch(() => {});
+    }
+  }
+
   onMount(() => {
     np.start();
     const stopLyrics = lyr.start();
@@ -288,6 +322,10 @@
       getCurrentWindow().listen<boolean>("stage-fullscreen", (e) => (full = e.payload)),
       listen<HistoryItem[]>("np-history", (e) => (history = e.payload)),
       listen<Settings>("settings", (e) => (settings = e.payload)),
+      listen<{ layout: SavedLayout | null }>("scene-preset", (e) => restoreLayout(e.payload.layout)),
+      listen<string>("make-lyric-card", (e) => {
+        if (e.payload === getCurrentWindow().label) makeCard();
+      }),
     ];
     Promise.all(offs.slice(0, 2))
       .then(() => invoke<[boolean, boolean]>("get_stage_state"))
@@ -319,6 +357,42 @@
   // paused with it, hidden-and-paused when the scene is covered, and nudged
   // back in sync only when it drifts (seeking a video is not free).
   const wantVideo = $derived(settings?.stageWallpaper === "video");
+  const wantSilk = $derived(settings?.stageWallpaper === "silk");
+  const SHADER_WALLS = ["water", "frost", "mosaic", "halftone"];
+  const wantCover = $derived(settings?.stageWallpaper === "cover");
+  const wantWater = $derived(SHADER_WALLS.includes(settings?.stageWallpaper ?? ""));
+  // A big copy of the cover (Windows only gives a 150 px thumbnail): the
+  // album card and the Water wallpaper show it; the small one until then.
+  let bigArt = $state<string | null>(null);
+  $effect(() => {
+    const key = songKey;
+    bigArt = null;
+    if (!key) return;
+    const t = untrack(() => track);
+    let stale = false;
+    invoke<string | null>("hires_art", { title: t?.title ?? "", artist: t?.artist ?? "" })
+      .then((u) => {
+        if (!stale) bigArt = u;
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  });
+  const artSrc = $derived(bigArt ?? track?.artUrl ?? null);
+  const artStyle = $derived(settings?.stageArtStyle ?? "tilt");
+  const dockStyle = $derived(settings?.stageDockStyle ?? "bar");
+  /** Silk's hole goes around whatever is on screen, wherever it was moved. */
+  function silkHoles(): Hole[] {
+    const W = innerWidth || 1;
+    const H = innerHeight || 1;
+    return [".words", ".card", ".clock"].flatMap((sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return [];
+      const r = el.getBoundingClientRect();
+      return [{ x: r.left / W, y: r.top / H, w: r.width / W, h: r.height / H }];
+    });
+  }
   const songKey = $derived(track ? `${track.title}\u001f${track.artist}` : "");
   let videoId = $state<string | null>(null);
   let videoStart = $state(0);
@@ -569,11 +643,41 @@
   style:--c3={palette[2] ?? palette[1] ?? palette[0]}
 >
   <!-- Wall: the album washed across the screen. -->
-  <div class="wall" aria-hidden="true">
+  <div class="wall" class:silky={wantSilk && !videoId} class:watery={(wantWater || wantCover) && !videoId} class:under-video={Boolean(videoId && videoReady)} aria-hidden="true">
+    {#if wantCover && !videoId}
+      <!-- Cover: just the album cover, still, on a dark wall. -->
+      {#key artSrc}
+        {#if artSrc}
+          <img class="plain-cover" src={artSrc} alt="" transition:fade={{ duration: 1200 }} />
+        {/if}
+      {/key}
+    {/if}
+    {#if wantWater && !videoId}
+      <ArtWall src={artSrc} running={motion} beat={settings?.stageBeat ?? true} look={(settings?.stageWallpaper ?? "water") as Look} />
+    {/if}
+    {#if wantSilk && !videoId}
+      {#key track?.artUrl}
+        {#if track?.artUrl}
+          <img class="silk-art" src={track.artUrl} alt="" transition:fade={{ duration: 1200 }} />
+        {/if}
+      {/key}
+      <SilkWall colors={palette} running={motion} measure={silkHoles} />
+    {/if}
     <div class="drift">
       {#key track?.artUrl}
         {#if track?.artUrl}
           <img class="wash" src={track.artUrl} alt="" transition:fade={{ duration: 1200 }} />
+        {/if}
+      {/key}
+    </div>
+    <!-- Album art, moving: blurred copies of the cover turning slowly, each
+         on its own path, so the colours keep folding into each other. -->
+    <div class="swirl">
+      {#key track?.artUrl}
+        {#if track?.artUrl}
+          {#each [1, 2, 3, 4] as k}
+            <img class="blob b{k}" src={track.artUrl} alt="" transition:fade={{ duration: 1600 }} />
+          {/each}
         {/if}
       {/key}
     </div>
@@ -626,12 +730,17 @@
 
   <section class="now" class:no-lyrics={!showLyrics}>
     {#if track}
-      <figure class="card" style:translate={moveOf("card")} style:scale={scaleOf("card")} style:width={widthOf("card")} style:height={heightOf("card")} class:wset={!cinema && !!layout.card?.w} class:hset={!cinema && !!layout.card?.h} class:sel={editing && selected === "card"}>
+      <figure class="card art-{artStyle}" class:spinning={live} style:translate={moveOf("card")} style:scale={scaleOf("card")} style:width={widthOf("card")} style:height={heightOf("card")} class:wset={!cinema && !!layout.card?.w} class:hset={!cinema && !!layout.card?.h} class:sel={editing && selected === "card"}>
         {@render grip("card")}
-        <div class="art">
+        {#if artStyle === "glow" && track.artUrl}
           {#key track.artUrl}
-            {#if track.artUrl}
-              <img src={track.artUrl} alt="" draggable="false" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = "hidden")} />
+            <img class="halo" src={track.artUrl} alt="" aria-hidden="true" transition:fade={{ duration: 900 }} />
+          {/key}
+        {/if}
+        <div class="art">
+          {#key artSrc}
+            {#if artSrc}
+              <img src={artSrc} alt="" draggable="false" onerror={(e) => ((e.currentTarget as HTMLImageElement).style.visibility = "hidden")} />
             {:else}
               <div class="art-empty"></div>
             {/if}
@@ -649,10 +758,11 @@
         {#if showLyrics}
           <StageLyrics
             {lyr}
-            style={cinema && lyricsStyle !== "karaoke" && lyricsStyle !== "sticker" && lyricsStyle !== "outline" ? "flow" : lyricsStyle}
+            style={cinema && lyricsStyle === "bold" ? "flow" : lyricsStyle}
             rate={np.playback.rate || 1}
             playing={live}
-            light={Boolean(videoId && videoReady)}
+            light={Boolean(videoId && videoReady) || wantSilk || wantWater || wantCover}
+            emoji={settings?.stageEmoji ?? true}
           />
         {:else}
           {#key track.title}
@@ -725,6 +835,8 @@
         {settings}
         {full}
         {save}
+        {layoutNow}
+        oncard={() => { panelOpen = false; makeCard(); }}
         onfullscreen={() => { panelOpen = false; toggleFull(); }}
         onmore={() => { panelOpen = false; invoke("open_settings"); }}
         onstore={() => { panelOpen = false; invoke("open_settings_tab", { tab: "store" }); }}
@@ -797,13 +909,16 @@
   {/if}
 
   {#if primary}
-  <footer class="dock glass" class:hidden={cinema} class:tucked={!(settings?.stageDock ?? true) && !editing} style:translate={moveOf("dock")} style:scale={scaleOf("dock")} style:width={widthOf("dock")} style:height={heightOf("dock")} class:wset={!cinema && !!layout.dock?.w} class:hset={!cinema && !!layout.dock?.h} class:sel={editing && selected === "dock"}>
+  <footer class="dock glass dock-{dockStyle}" class:hidden={cinema} class:tucked={!(settings?.stageDock ?? true) && !editing} style:translate={moveOf("dock")} style:scale={scaleOf("dock")} style:width={widthOf("dock")} style:height={heightOf("dock")} class:wset={!cinema && !!layout.dock?.w} class:hset={!cinema && !!layout.dock?.h} class:sel={editing && selected === "dock"}>
     {@render grip("dock")}
     {#if track}
+      <div class="seg seg-np">
       <div class="np">
         {#if track.artUrl}<img src={track.artUrl} alt="" />{:else}<span class="ph"></span>{/if}
         <span class="txt"><span class="t">{track.title}</span><span class="a">{track.artist || track.source}</span></span>
       </div>
+      </div>
+      <div class="seg seg-play">
       <PlayerControls />
       <div class="progress">
         <span class="time">{formatTime(position)}</span>
@@ -813,7 +928,9 @@
         </div>
         <span class="time">{formatTime(duration)}</span>
       </div>
+      </div>
     {/if}
+    <div class="seg seg-tools">
     <button
       bind:this={searchBtn}
       class="search browse"
@@ -836,6 +953,7 @@
     <button class="icon gear" aria-label="Desktop scene options" aria-expanded={panelOpen} onclick={() => { panelOpen = !panelOpen; searchOpen = false; }}>
       <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8M16 5v4M10 15v4" /></svg>
     </button>
+    </div>
   </footer>
   {/if}
 </main>
@@ -912,6 +1030,19 @@
       radial-gradient(120% 90% at 50% 40%, transparent 40%, rgba(3, 2, 8, 0.62) 100%),
       linear-gradient(180deg, rgba(3, 2, 8, 0.18), rgba(3, 2, 8, 0.5));
   }
+  /* Silk: the art sharp but dark, seen through the hole in the silk. The
+     wash, the colour fields and the veil step aside. */
+  .silky > .drift,
+  .silky > .field,
+  .silky > .veil {
+    display: none;
+  }
+  .silk-art {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    filter: brightness(0.58) saturate(1.1);
+  }
   /* Music video wallpaper: cover the screen like object-fit: cover. */
   .wall > .mv {
     inset: auto;
@@ -953,7 +1084,104 @@
     from { transform: translate3d(0, 0, 0); }
     to { transform: translate3d(-26vmax, -12vmax, 0); }
   }
+  /* Album art, moving: four blurred copies of the cover, each drifting on
+     its own slow loop and turning (Apple Music's trick, our own take). The
+     blur is done on a small image and the compositor scales it up, so each
+     layer is cheap; motion is capped at 24 steps a second. */
+  .swirl > .blob {
+    position: absolute;
+    inset: auto;
+    width: 20vmax;
+    height: 20vmax;
+    margin: -10vmax 0 0 -10vmax;
+    object-fit: cover;
+    border-radius: 50%;
+    filter: blur(13px) saturate(1.7) brightness(0.9);
+    opacity: 0.78;
+    will-change: transform;
+  }
+  .b1 {
+    left: 28%;
+    top: 32%;
+    animation: loop-a 84s steps(2016) infinite;
+  }
+  .b2 {
+    left: 74%;
+    top: 30%;
+    animation: loop-b 102s steps(2448) infinite;
+  }
+  .b3 {
+    left: 38%;
+    top: 78%;
+    animation: loop-c 96s steps(2304) infinite;
+  }
+  .b4 {
+    left: 70%;
+    top: 74%;
+    opacity: 0.6;
+    animation: loop-d 120s steps(2880) infinite;
+  }
+  @keyframes loop-a {
+    0% { transform: translate(0, 0) rotate(0deg) scale(3.4); }
+    25% { transform: translate(9vmax, 5vmax) rotate(90deg) scale(3.8); }
+    50% { transform: translate(4vmax, 12vmax) rotate(180deg) scale(3.3); }
+    75% { transform: translate(-6vmax, 6vmax) rotate(270deg) scale(3.7); }
+    100% { transform: translate(0, 0) rotate(360deg) scale(3.4); }
+  }
+  @keyframes loop-b {
+    0% { transform: translate(0, 0) rotate(0deg) scale(3.6); }
+    25% { transform: translate(-10vmax, 6vmax) rotate(-90deg) scale(3.2); }
+    50% { transform: translate(-14vmax, -2vmax) rotate(-180deg) scale(3.9); }
+    75% { transform: translate(-4vmax, -7vmax) rotate(-270deg) scale(3.4); }
+    100% { transform: translate(0, 0) rotate(-360deg) scale(3.6); }
+  }
+  @keyframes loop-c {
+    0% { transform: translate(0, 0) rotate(40deg) scale(3.3); }
+    25% { transform: translate(12vmax, -6vmax) rotate(130deg) scale(3.7); }
+    50% { transform: translate(20vmax, 2vmax) rotate(220deg) scale(3.2); }
+    75% { transform: translate(8vmax, 6vmax) rotate(310deg) scale(3.6); }
+    100% { transform: translate(0, 0) rotate(400deg) scale(3.3); }
+  }
+  @keyframes loop-d {
+    0% { transform: translate(0, 0) rotate(0deg) scale(3.2); }
+    25% { transform: translate(-8vmax, -10vmax) rotate(-90deg) scale(3.6); }
+    50% { transform: translate(-18vmax, -4vmax) rotate(-180deg) scale(3.1); }
+    75% { transform: translate(-6vmax, 4vmax) rotate(-270deg) scale(3.5); }
+    100% { transform: translate(0, 0) rotate(-360deg) scale(3.2); }
+  }
+  /* Other wallpapers cover the moving art: don't draw it under them. */
+  .watery > .drift,
+  .watery > .swirl,
+  .watery > .field,
+  .silky > .swirl,
+  .under-video > .swirl {
+    display: none;
+  }
+  .plain-cover {
+    inset: auto;
+    left: 50%;
+    top: 50%;
+    width: min(78vh, 62vw);
+    height: auto;
+    aspect-ratio: 1;
+    object-fit: cover;
+    translate: -50% -50%;
+    border-radius: 6px;
+    box-shadow: 0 40px 120px -30px rgba(0, 0, 0, 0.9);
+  }
+  /* Water: the cover is the page; the veil keeps words readable on it. */
+  .watery > .veil {
+    background:
+      radial-gradient(130% 100% at 50% 45%, rgba(3, 2, 8, 0.12) 30%, rgba(3, 2, 8, 0.6) 100%),
+      linear-gradient(180deg, rgba(3, 2, 8, 0.25), rgba(3, 2, 8, 0.45));
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .swirl > .blob {
+      animation: none;
+    }
+  }
   .frozen .drift,
+  .frozen .blob,
   .frozen .field,
   .frozen .eq i {
     animation-play-state: paused;
@@ -1051,7 +1279,6 @@
     box-shadow:
       0 30px 60px -18px rgba(0, 0, 0, 0.7),
       0 0 70px -10px color-mix(in oklab, var(--c1) 60%, transparent);
-    -webkit-box-reflect: below 10px linear-gradient(transparent 68%, rgba(255, 255, 255, 0.16));
     background: linear-gradient(135deg, var(--c1), var(--c2));
   }
   .art img,
@@ -1699,6 +1926,283 @@
   .dock.tucked:focus-within {
     opacity: 1;
     transform: none;
+  }
+
+  /* ── Album looks ──────────────────────────────────── */
+  /* Tilt is the base look above. The others stand flat, without the
+     mirror, so the caption sits close under them. */
+  .card {
+    position: relative;
+  }
+  .art-tilt .art {
+    -webkit-box-reflect: below 10px linear-gradient(transparent 68%, rgba(255, 255, 255, 0.16));
+  }
+  .card:not(.art-tilt) .art {
+    transform: none;
+  }
+  .card:not(.art-tilt) figcaption {
+    margin-top: 22px;
+  }
+  /* Print: the art on a thick white mat, like a photo print. */
+  .art-print .art {
+    border-radius: 18px;
+    background: linear-gradient(160deg, #fbfaf6, #e6e3dc);
+    box-shadow:
+      0 30px 60px -22px rgba(0, 0, 0, 0.78),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      inset 0 -1px 0 rgba(0, 0, 0, 0.12);
+  }
+  .art-print .art img,
+  .art-print .art .art-empty {
+    inset: 9%;
+    width: 82%;
+    height: 82%;
+    border-radius: 5px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.3);
+  }
+  .art-print .sheen {
+    opacity: 0.45;
+  }
+  /* Vinyl: the cover is the record. It turns slowly while the song plays
+     (slow enough to still see the art), under fine grooves, a centre hole
+     and a reflection that stays still while the record turns. */
+  .art-vinyl .art {
+    border-radius: 50%;
+    box-shadow:
+      0 28px 56px -20px rgba(0, 0, 0, 0.85),
+      0 0 0 1px rgba(255, 255, 255, 0.08),
+      0 0 60px -14px color-mix(in oklab, var(--c1) 55%, transparent);
+  }
+  .art-vinyl .art img,
+  .art-vinyl .art .art-empty {
+    animation: spin 7s linear infinite;
+    animation-play-state: paused;
+  }
+  .spinning.art-vinyl .art img,
+  .spinning.art-vinyl .art .art-empty {
+    animation-play-state: running;
+  }
+  /* Grooves over the art, darker toward the rim, plus the label ring. */
+  .art-vinyl .art::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, transparent 0 15%, rgba(0, 0, 0, 0.35) 15.4% 16.2%, transparent 16.6%),
+      repeating-radial-gradient(circle, rgba(0, 0, 0, 0.16) 0 1px, transparent 1.5px 3px),
+      radial-gradient(circle, transparent 55%, rgba(0, 0, 0, 0.38) 100%);
+    pointer-events: none;
+  }
+  /* The spindle hole. */
+  .art-vinyl .art::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    z-index: 2;
+    width: 5.5%;
+    aspect-ratio: 1;
+    translate: -50% -50%;
+    border-radius: 50%;
+    background: #08070c;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.18), inset 0 1px 2px rgba(0, 0, 0, 0.8);
+  }
+  /* Vinyl's sheen: two soft light wedges that don't turn with the record. */
+  .art-vinyl .sheen {
+    z-index: 1;
+    border-radius: 50%;
+    mix-blend-mode: screen;
+    background: conic-gradient(
+      from 210deg,
+      transparent 0 6%,
+      rgba(255, 255, 255, 0.16) 12%,
+      transparent 19% 51%,
+      rgba(255, 255, 255, 0.1) 57%,
+      transparent 64%
+    );
+  }
+  @keyframes spin {
+    to {
+      rotate: 360deg;
+    }
+  }
+  /* Glow: the art floats over a soft light made of itself. */
+  .art-glow .art {
+    z-index: 1;
+    border-radius: 14px;
+    box-shadow: 0 18px 44px -16px rgba(0, 0, 0, 0.6);
+  }
+  .halo {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: 30%;
+    filter: blur(48px) saturate(2) brightness(1.35);
+    opacity: 1;
+    transform: translateY(8%) scale(1.28);
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .art-vinyl .art img,
+    .art-vinyl .art .art-empty {
+      animation: none;
+    }
+  }
+
+  /* ── Dock looks ───────────────────────────────────── */
+  /* The three groups only matter to Islands; elsewhere they vanish. */
+  .dock .seg {
+    display: contents;
+  }
+  /* Pill: a compact capsule; the progress is a hairline along its foot. */
+  .dock-pill {
+    position: relative;
+    width: auto;
+    max-width: min(100%, 780px);
+    gap: 12px;
+    padding: 7px 8px 7px 7px;
+    border-radius: 999px;
+  }
+  .dock-pill .np {
+    width: auto;
+    max-width: 240px;
+  }
+  /* The Pill is compact by design: its title and hairline stay at any
+     width (the Bar's narrow-dock rules would hide them below 980 px). */
+  .dock-pill .np .txt {
+    display: grid;
+    min-width: 110px;
+  }
+  .dock-pill .progress {
+    display: flex;
+  }
+  .dock-pill .np img,
+  .dock-pill .np .ph {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+  }
+  .dock-pill .progress {
+    position: absolute;
+    left: 28px;
+    right: 28px;
+    bottom: 0;
+    min-width: 0;
+  }
+  .dock-pill .progress .time {
+    display: none;
+  }
+  .dock-pill .bar {
+    height: 6px;
+  }
+  .dock-pill .bar::before {
+    inset: 2px 0;
+    height: auto;
+  }
+  .dock-pill .fill {
+    height: 2px;
+  }
+  .dock-pill .search {
+    width: 40px;
+    height: 40px;
+    padding: 0;
+    justify-content: center;
+    border-radius: 50%;
+  }
+  .dock-pill .search span {
+    display: none;
+  }
+  /* Islands: three pieces of glass floating apart. */
+  .dock-islands.glass {
+    background: none;
+    border-color: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+    padding: 0;
+    gap: 14px;
+  }
+  .dock-islands .seg {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 9px 12px 9px 9px;
+    border-radius: 22px;
+    background: var(--glass);
+    border: 1px solid var(--glass-line);
+    backdrop-filter: blur(28px) saturate(1.5);
+    box-shadow: 0 24px 60px -20px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  }
+  .dock-islands .seg-play {
+    flex: 1;
+    min-width: 0;
+    padding-left: 12px;
+  }
+  .dock-islands .seg-tools {
+    padding: 9px;
+  }
+  /* Line: next to nothing. A glowing line across the foot of the screen,
+     the song and the controls above it, quiet until you point at them. */
+  .dock-line.glass {
+    background: none;
+    border-color: transparent;
+    backdrop-filter: none;
+    box-shadow: none;
+    width: 100%;
+    max-width: none;
+    padding: 0 0 10px;
+    position: relative;
+    opacity: 0.62;
+    transition: opacity 260ms ease;
+  }
+  .dock-line:hover,
+  .dock-line:focus-within {
+    opacity: 1;
+  }
+  .dock-line .np img,
+  .dock-line .np .ph {
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+  }
+  .dock-line .progress {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -6px;
+  }
+  .dock-line .progress .time {
+    display: none;
+  }
+  .dock-line .bar::before {
+    inset: 8px 0;
+    height: auto;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .dock-line .fill {
+    height: 2px;
+    box-shadow: 0 0 14px color-mix(in oklab, var(--c1) 90%, transparent);
+  }
+  .dock-line .fill::after {
+    content: "";
+    position: absolute;
+    right: -3px;
+    top: 50%;
+    width: 7px;
+    height: 7px;
+    translate: 0 -50%;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 12px 3px color-mix(in oklab, var(--c1) 80%, white);
+  }
+  .dock-line .search {
+    margin-left: auto;
+    background: none;
+    border-color: transparent;
   }
 
   /* Clock looks */

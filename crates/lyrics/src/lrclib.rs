@@ -152,8 +152,33 @@ impl LrclibClient {
             return Ok(Some(record));
         }
         let records = self.search(&query.title, &query.artist).await?;
-        Ok(pick_best(&records, duration).cloned())
+        if let Some(best) = pick_best(&records, duration) {
+            return Ok(Some(best.clone()));
+        }
+        // Last try, by title alone, when the artist field may not name the
+        // singer (a playlist channel). Only with a known length, and only a
+        // record whose artist the title or channel does mention.
+        if duration.is_none() || query.artist.is_empty() {
+            return Ok(None);
+        }
+        let records = self.search(&query.title, "").await?;
+        let named: Vec<LrclibRecord> = records
+            .into_iter()
+            .filter(|r| mentions_artist(&format!("{title} {artist}"), &r.artist_name))
+            .collect();
+        Ok(pick_best(&named, duration).cloned())
     }
+}
+
+/// Does `text` name one of `artists` ("Honey Singh & Gippy Grewal")? Any word
+/// of four letters or more counts.
+fn mentions_artist(text: &str, artists: &str) -> bool {
+    let text = text.to_lowercase();
+    artists
+        .to_lowercase()
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| w.chars().count() >= 4)
+        .any(|w| text.contains(w))
 }
 
 /// Selects a record within three seconds of a known target duration.
@@ -211,6 +236,16 @@ mod tests {
         assert!(records[5].duration.is_none());
         assert!(records[5].album_name.is_none());
         assert!(records[5].plain_lyrics.is_none());
+    }
+
+    #[test]
+    fn title_only_results_must_name_an_artist_from_the_title() {
+        let title = "Angreji Beat (Original Video): Yo Yo Honey Singh | Gippy Grewal";
+        assert!(mentions_artist(title, "Honey Singh & Gippy Grewal"));
+        assert!(mentions_artist(title, "Yo Yo Honey Singh"));
+        assert!(!mentions_artist(title, "Taylor Swift"));
+        // Short words ("Yo", "DJ") alone never count.
+        assert!(!mentions_artist(title, "Yo DJ"));
     }
 
     #[test]

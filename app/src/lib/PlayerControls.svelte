@@ -8,6 +8,7 @@
   //                                 Windows about them
   // Each button shows only when the playing app supports it.
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { np } from "./nowPlaying.svelte";
 
   let { volume: showVolume = true }: { volume?: boolean } = $props();
@@ -46,6 +47,15 @@
       if (!document.hidden) webCall("state");
     }, 3000);
     return () => clearInterval(id);
+  });
+
+  // A hotkey moved the volume: the slider follows.
+  $effect(() => {
+    const off = listen<number>("volume-changed", (e) => {
+      if (isWeb && web) web = { ...web, volume: e.payload };
+      else appVolume = e.payload;
+    });
+    return () => void off.then((f) => f());
   });
 
   const shuffle = $derived(isWeb ? (web?.shuffle ?? null) : np.playback.shuffle);

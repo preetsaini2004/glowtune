@@ -484,6 +484,10 @@ const PALETTE_CROSSFADE: Duration = Duration::from_millis(1600);
 const MONITOR_RECHECK: Duration = Duration::from_secs(2);
 /// How often to check for a fullscreen app while the glow is visible.
 const FULLSCREEN_RECHECK: Duration = Duration::from_millis(500);
+/// How often the strips put themselves back on top while shown. Windows can
+/// push a topmost window under ordinary ones (it keeps the flag but sinks in
+/// the stack), and then the glow is only seen through the taskbar.
+const RAISE_EVERY: Duration = Duration::from_secs(2);
 
 /// After this long without light, the GPU device is released entirely (the
 /// next play recreates it behind the fade-in). `GLOWTUNE_DEEP_SLEEP_SECS` overrides.
@@ -541,6 +545,7 @@ struct App {
     monitors: Vec<MonitorGlow>,
     monitors_checked: Option<Instant>,
     fullscreen_checked: Option<Instant>,
+    raised_at: Option<Instant>,
 
     start: Instant,
     last_tick: Instant,
@@ -568,6 +573,7 @@ impl App {
             monitors: Vec::new(),
             monitors_checked: None,
             fullscreen_checked: None,
+            raised_at: None,
             start: now,
             last_tick: now,
             next_frame: now,
@@ -918,6 +924,18 @@ impl ApplicationHandler<Cmd> for App {
         {
             self.update_fullscreen();
         }
+        if self.shown
+            && self
+                .raised_at
+                .is_none_or(|t| now.duration_since(t) > RAISE_EVERY)
+        {
+            self.raised_at = Some(now);
+            for m in self.monitors.iter().filter(|m| !m.covered) {
+                for s in &m.strips {
+                    keep_on_top(&s.window);
+                }
+            }
+        }
         if !self.shown {
             self.last_tick = now;
             self.next_frame = now;
@@ -937,6 +955,26 @@ impl ApplicationHandler<Cmd> for App {
             }
         }
         event_loop.set_control_flow(ControlFlow::WaitUntil(self.next_frame));
+    }
+}
+
+/// Back to the top of the always-on-top windows, without activating.
+fn keep_on_top(window: &Window) {
+    use windows::Win32::UI::WindowsAndMessaging::{
+        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SetWindowPos,
+    };
+    let Some(hwnd) = hwnd_of(window) else { return };
+    // SAFETY: z-order change on our own strip window.
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        );
     }
 }
 

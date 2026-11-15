@@ -11,6 +11,9 @@
 | Ad-block filter lists, Store packs, small diagnostic notes | `%LOCALAPPDATA%\dev.preet.glowtune\` (cache) | Ad blocking; downloaded themes; notes that help fix a service whose website changed. They stay on your PC unless you choose to share them. |
 | Your music-service logins | `%LOCALAPPDATA%\dev.preet.glowtune\services\<service>\` | Each service runs in its own web profile, like a separate browser, so you stay signed in |
 | Recently played | Memory only | Shown on the desktop scene; forgotten when Glowtune closes |
+| Listening history (on by default; switch off or delete it in Settings → Listening) | `%APPDATA%\dev.preet.glowtune\listening.jsonl` | Song title, artist, app and how long it played, for your own stats page. Never sent anywhere. |
+| Lyric cards you make (Ctrl+Alt+C) | `Pictures\Glowtune\` | Pictures you asked for |
+| Scene presets | In your settings | The looks you save |
 
 **Your logins:** you sign in on the service's own page (Spotify, Apple, Google / YouTube, SoundCloud), inside Glowtune.
 - Glowtune doesn't read, store or send your password. The service's page handles it, as it would in a browser.
@@ -21,12 +24,18 @@
 - Audio is never recorded, saved or sent anywhere.
 - It doesn't use your microphone.
 
+**Sound effects (optional, off by default):** when you turn on the equalizer or song blending, Glowtune takes the sound of its own service window from Windows, changes it, and plays the result.
+- This happens live, in memory, on your PC. To blend one song into the next, a few seconds of sound are held in memory and then dropped.
+- Nothing is recorded, saved to disk or sent anywhere.
+- Only the sound of Glowtune's own service windows is touched, never other apps.
+- While effects are on, Windows shows the service window's own volume as almost zero. That is expected: the sound you hear comes from Glowtune. Turning effects off puts it back.
+
 ## What goes online, and why
 
 | Where to | What is sent | Why |
 |---|---|---|
 | **lrclib.net** | Song title, artist, album and length | To find synced lyrics. LRCLIB is a free, open lyrics database. |
-| **itunes.apple.com** | What you type in search | Search results and cover art |
+| **itunes.apple.com** | What you type in search; the playing song’s title and artist; your top songs on the Listening page | Search results, a large copy of the album cover, and covers for your stats |
 | The music service you open: **open.spotify.com**, **music.apple.com**, **music.youtube.com**, **soundcloud.com** (and SoundCloud's own API for autoplay suggestions) | Whatever that service's page sends | Same as using the service in a browser. Their own privacy policies apply. |
 | **youtube-nocookie.com** | The video being shown | Music-video backgrounds on the desktop scene. YouTube's privacy-enhanced mode. |
 | **easylist.to**, **ublockorigin.github.io** | Nothing about you (a plain file download) | Up-to-date ad-block filter lists |

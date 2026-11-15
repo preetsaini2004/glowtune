@@ -4,7 +4,71 @@
   import { onMount } from "svelte";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { invoke } from "@tauri-apps/api/core";
+  import { listen } from "@tauri-apps/api/event";
   import { np, formatTime } from "$lib/nowPlaying.svelte";
+  import { LyricsFollower } from "$lib/lyrics.svelte";
+  import { showLyric } from "$lib/clean";
+  import { Volume } from "$lib/volume.svelte";
+  import { saveLyricCard } from "$lib/lyricCard";
+
+  // Five looks (Settings → Player, or the little button on hover). Rust sizes
+  // the window for each and drops the glass behind the round / capsule ones.
+  //
+  //   glass  art · title · progress · controls in a glass bar (the original)
+  //   disc   the cover as a turning record, a progress ring round it,
+  //          controls when you point at it
+  //   card   a tall card: big cover, title, progress, controls
+  //   pill   a slim capsule: spinning cover, title, play and next
+  //   lyric  the line being sung, big, beside a small cover
+  type Style = "glass" | "disc" | "card" | "pill" | "lyric";
+  const STYLES: Style[] = ["glass", "disc", "card", "pill", "lyric"];
+  let style = $state<Style>("glass");
+  const lyr = new LyricsFollower();
+  // Volume: the speaker button opens a slider; the wheel works anywhere.
+  const vol = new Volume();
+  let volOpen = $state(false);
+  $effect(() => {
+    void np.track?.source;
+    void np.track?.title;
+    vol.read();
+  });
+  // Size: small / medium / large (Rust sizes the window to match).
+  let size = $state<"s" | "m" | "l">("m");
+  const ZOOM = { s: 0.84, m: 1, l: 1.22 };
+
+  // The big cover for the looks that show the art large.
+  let bigArt = $state<string | null>(null);
+  const songKey = $derived(np.track ? `${np.track.title}\u001f${np.track.artist}` : "");
+  $effect(() => {
+    const key = songKey;
+    bigArt = null;
+    if (!key || (style !== "card" && style !== "disc")) return;
+    const t = np.track;
+    let stale = false;
+    invoke<string | null>("hires_art", { title: t?.title ?? "", artist: t?.artist ?? "" })
+      .then((u) => {
+        if (!stale) bigArt = u;
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  });
+  const art = $derived(bigArt ?? np.track?.artUrl ?? null);
+
+  $effect(() => {
+    void np.playback;
+    void lyr.lyrics;
+    lyr.schedule();
+  });
+
+  async function cycle() {
+    type S = { playerStyle: string };
+    const s = await invoke<S>("get_settings");
+    const i = STYLES.indexOf(s.playerStyle as Style);
+    s.playerStyle = STYLES[(i + 1) % STYLES.length];
+    await invoke("set_settings", { new: s }).catch(() => {});
+  }
 
   let now = $state(Date.now());
   let scrubbing = $state<number | null>(null); // ms while dragging the bar
@@ -16,13 +80,39 @@
   const progress = $derived(duration ? Math.min(1, position / duration) : 0);
   const palette = $derived(np.palette);
 
+
+  // Ctrl+Alt+C: a lyric card of the line being sung.
+  async function makeCard() {
+    try {
+      await saveLyricCard(lyr);
+    } catch (e) {
+      invoke("toast", { icon: "card", text: e instanceof Error ? e.message : String(e) }).catch(() => {});
+    }
+  }
+
   onMount(() => {
     np.start();
+    const stopLyrics = lyr.start();
+    const unCard = listen<string>("make-lyric-card", (e) => {
+      if (e.payload === getCurrentWindow().label) makeCard();
+    });
+    type S = { playerStyle?: string; playerSize?: string };
+    const take = (s: S) => {
+      if (STYLES.includes(s.playerStyle as Style)) style = s.playerStyle as Style;
+      if (s.playerSize === "s" || s.playerSize === "m" || s.playerSize === "l") size = s.playerSize;
+    };
+    invoke<S>("get_settings").then(take).catch(() => {});
+    const unlisten = listen<S>("settings", (e) => take(e.payload));
     // Tick only while playing and visible: no work when paused or hidden.
     const id = setInterval(() => {
       if (np.playing && !document.hidden) now = Date.now();
     }, 250);
-    return () => clearInterval(id);
+    return () => {
+      clearInterval(id);
+      stopLyrics();
+      unlisten.then((f) => f());
+      unCard.then((f) => f());
+    };
   });
 
   function msAt(clientX: number): number | null {
@@ -61,13 +151,108 @@
 
 <svelte:window onkeydown={keys} />
 
+{#snippet transport(big: boolean)}
+  <button class="icon" aria-label="Previous" onclick={() => np.control("previous")}>
+    <svg viewBox="0 0 24 24"><path d="M7 5.5v13M18.2 6.2 10 12l8.2 5.8z" /></svg>
+  </button>
+  <button class="icon play" class:big aria-label={np.playing ? "Pause" : "Play"} onclick={() => np.control("playPause")}>
+    {#if np.playing}
+      <svg viewBox="0 0 24 24"><path d="M8.5 6v12M15.5 6v12" /></svg>
+    {:else}
+      <svg viewBox="0 0 24 24"><path d="M8 5.8v12.4L18.4 12z" /></svg>
+    {/if}
+  </button>
+  <button class="icon" aria-label="Next" onclick={() => np.control("next")}>
+    <svg viewBox="0 0 24 24"><path d="M17 5.5v13M5.8 6.2 14 12l-8.2 5.8z" /></svg>
+  </button>
+{/snippet}
+
 <main
-  class="player"
+  class="player s-{style}"
+  class:alt={style !== "glass"}
   class:idle={!track}
+  class:playing={np.playing}
   style:--c1={palette[0]}
   style:--c2={palette[1] ?? palette[0]}
+  style:zoom={ZOOM[size]}
+  style:height={`calc(100vh / ${ZOOM[size]})`}
+  onwheel={(e) => vol.wheel(e)}
   data-tauri-drag-region
 >
+  {#if style !== "glass"}
+    {#if !track}
+      <div class="alt-empty" data-tauri-drag-region>
+        <p class="title" data-tauri-drag-region>Nothing playing</p>
+      </div>
+    {:else if style === "disc"}
+      <!-- The cover is the record; the ring round it is the song so far. -->
+      <div class="disc-wrap" data-tauri-drag-region>
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true">
+          <circle class="track-ring" cx="50" cy="50" r="47" />
+          <circle class="done-ring" cx="50" cy="50" r="47" pathLength="1" style:stroke-dashoffset={1 - progress} />
+        </svg>
+        <div class="disc" data-tauri-drag-region>
+          {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
+          <i class="grooves" aria-hidden="true"></i>
+        </div>
+        <div class="disc-hover">
+          <p class="title" title={track.title}>{track.title}</p>
+          <div class="row">{@render transport(false)}</div>
+          <p class="time">{formatTime(position)} / {formatTime(duration)}</p>
+        </div>
+      </div>
+    {:else if style === "card"}
+      <div class="card-light" aria-hidden="true"></div>
+      <div class="card-art" data-tauri-drag-region>
+        {#key art}
+          {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
+        {/key}
+      </div>
+      <div class="card-meta" data-tauri-drag-region>
+        <p class="title" title={track.title} data-tauri-drag-region>{track.title}</p>
+        <p class="artist" data-tauri-drag-region>{track.artist || track.source}</p>
+      </div>
+      <div class="card-bar">
+        <span class="time">{formatTime(position)}</span>
+        <div class="line"><i style:transform={`scaleX(${progress})`}></i></div>
+        <span class="time">{formatTime(duration)}</span>
+      </div>
+      <div class="row card-controls">{@render transport(true)}</div>
+    {:else if style === "pill"}
+      <div class="pill-art" data-tauri-drag-region>
+        {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
+      </div>
+      <div class="pill-meta" data-tauri-drag-region>
+        <p class="title" title={track.title} data-tauri-drag-region>{track.title}</p>
+        <p class="artist" data-tauri-drag-region>{track.artist || track.source}</p>
+      </div>
+      <div class="row">{@render transport(false)}</div>
+      <div class="pill-line" aria-hidden="true"><i style:transform={`scaleX(${progress})`}></i></div>
+    {:else}
+      <div class="lyric-art" data-tauri-drag-region>
+        {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
+      </div>
+      <div class="lyric-words" data-tauri-drag-region>
+        {#if lyr.current && lyr.current.text}
+          {#key lyr.index}
+            <p class="sung" data-tauri-drag-region>{showLyric(lyr.current.text, np.cleanLyrics)}</p>
+          {/key}
+          <p class="coming" data-tauri-drag-region>{lyr.next ? showLyric(lyr.next.text, np.cleanLyrics) || "♪" : ""}</p>
+        {:else}
+          <p class="sung" data-tauri-drag-region>{track.title}</p>
+          <p class="coming" data-tauri-drag-region>{track.artist || track.source}</p>
+        {/if}
+      </div>
+      <button class="icon play" aria-label={np.playing ? "Pause" : "Play"} onclick={() => np.control("playPause")}>
+        {#if np.playing}
+          <svg viewBox="0 0 24 24"><path d="M8.5 6v12M15.5 6v12" /></svg>
+        {:else}
+          <svg viewBox="0 0 24 24"><path d="M8 5.8v12.4L18.4 12z" /></svg>
+        {/if}
+      </button>
+      <div class="lyric-line" aria-hidden="true"><i style:transform={`scaleX(${progress})`}></i></div>
+    {/if}
+  {:else}
   <div class="light" aria-hidden="true"></div>
 
   {#if track}
@@ -138,7 +323,35 @@
       </div>
     </div>
   {/if}
+  {/if}
 
+  {#if track && vol.level !== null}
+    <div class="vol" class:open={volOpen}>
+      <button class="spk" aria-label={volOpen ? "Close volume" : "Volume"} aria-expanded={volOpen} onclick={() => (volOpen = !volOpen)}>
+        <svg viewBox="0 0 24 24">
+          <path class="fill" d="M4 9.5h3.5L12 6v12l-4.5-3.5H4z" />
+          {#if vol.level > 0}<path d="M15.5 9.5a3.5 3.5 0 0 1 0 5" />{/if}
+          {#if vol.level > 0.5}<path d="M18 7a7 7 0 0 1 0 10" />{/if}
+        </svg>
+      </button>
+      {#if volOpen}
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          value={vol.level}
+          aria-label="Volume"
+          style:--p={`${vol.level * 100}%`}
+          oninput={(e) => vol.set(Number((e.currentTarget as HTMLInputElement).value))}
+        />
+        <span class="pct">{Math.round(vol.level * 100)}</span>
+      {/if}
+    </div>
+  {/if}
+  <button class="cycle" aria-label="Change the player's look" title="Change look" onclick={cycle}>
+    <svg viewBox="0 0 24 24"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4" /></svg>
+  </button>
   <button class="close" aria-label="Hide player" onclick={() => getCurrentWindow().close()}>
     <svg viewBox="0 0 24 24"><path d="M7 7l10 10M17 7 7 17" /></svg>
   </button>
@@ -382,5 +595,464 @@
     stroke-width: 2.4;
     stroke-linecap: round;
     fill: none;
+  }
+
+  /* ── Volume (bottom-right; the wheel works anywhere) ─ */
+  .vol {
+    position: absolute;
+    right: 6px;
+    bottom: 6px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px;
+    border-radius: 999px;
+    opacity: 0.8;
+    transition: opacity 150ms ease, background 150ms ease;
+  }
+  .player:hover .vol,
+  .vol.open,
+  .vol:focus-within {
+    opacity: 1;
+  }
+  .vol.open {
+    padding: 2px 10px 2px 2px;
+    background: rgba(10, 9, 14, 0.82);
+    box-shadow: 0 6px 20px -6px rgba(0, 0, 0, 0.7);
+  }
+  .spk {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    border-radius: 50%;
+    background: color-mix(in oklab, var(--c1) 30%, rgba(10, 9, 14, 0.75));
+    box-shadow: 0 2px 10px -2px rgba(0, 0, 0, 0.6);
+    color: var(--ink);
+    cursor: pointer;
+  }
+  .spk:hover {
+    background: color-mix(in oklab, var(--c1) 50%, rgba(10, 9, 14, 0.75));
+  }
+  .spk svg {
+    width: 15px;
+    height: 15px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .spk .fill {
+    fill: currentColor;
+  }
+  .vol input {
+    width: 96px;
+    height: 4px;
+    appearance: none;
+    border-radius: 2px;
+    background: linear-gradient(90deg, var(--c1) var(--p), rgba(255, 255, 255, 0.18) var(--p));
+    cursor: pointer;
+  }
+  .vol input::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 8px var(--c1);
+  }
+  .pct {
+    min-width: 22px;
+    font-size: 11px;
+    color: var(--ink-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Disc: the window's corners are see-through, so the volume sits inside
+     the record, at the bottom of the circle. */
+  .s-disc .vol {
+    right: auto;
+    left: 50%;
+    bottom: 26px;
+    translate: -50% 0;
+  }
+  /* The Pill's controls fill its right end: volume sits over the cover. */
+  .s-pill .vol {
+    left: 4px;
+    right: auto;
+    bottom: 2px;
+  }
+
+  /* ── Look switcher (top-left, on hover) ───────────── */
+  .cycle {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    z-index: 5;
+    width: 22px;
+    height: 22px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    display: grid;
+    place-items: center;
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--ink-soft);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 150ms ease;
+  }
+  .close {
+    z-index: 5;
+  }
+  .player:hover .cycle,
+  .cycle:focus-visible {
+    opacity: 1;
+  }
+  .cycle svg {
+    width: 13px;
+    height: 13px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  /* ── Shared bits of the new looks ─────────────────── */
+  .alt {
+    display: block;
+    padding: 0;
+    gap: 0;
+  }
+  .row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .play.big {
+    width: 54px;
+    height: 54px;
+  }
+  .play.big svg {
+    width: 24px;
+    height: 24px;
+  }
+  .alt-empty {
+    height: 100%;
+    display: grid;
+    place-items: center;
+    padding: 0 16px;
+    text-align: center;
+  }
+  @keyframes turn {
+    to {
+      rotate: 360deg;
+    }
+  }
+
+  /* ── Disc: a turning record with a progress ring ──── */
+  .s-disc {
+    background: transparent;
+    border-radius: 50%;
+  }
+  .s-disc .alt-empty {
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(20, 17, 28, 0.92) 60%, transparent 62%);
+  }
+  .disc-wrap {
+    position: absolute;
+    inset: 8px;
+    border-radius: 50%;
+  }
+  .ring {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    rotate: -90deg;
+    pointer-events: none;
+  }
+  .ring circle {
+    fill: none;
+    stroke-width: 2.4;
+  }
+  .track-ring {
+    stroke: rgba(255, 255, 255, 0.16);
+  }
+  .done-ring {
+    stroke: color-mix(in oklab, var(--c1) 70%, white);
+    stroke-linecap: round;
+    stroke-dasharray: 1;
+    filter: drop-shadow(0 0 4px var(--c1));
+    transition: stroke-dashoffset 250ms linear;
+  }
+  .disc {
+    position: absolute;
+    inset: 9px;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 10px 30px -8px rgba(0, 0, 0, 0.8), 0 0 40px -10px var(--c1);
+  }
+  .disc img,
+  .disc .art-empty {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    animation: turn 8s linear infinite;
+    animation-play-state: paused;
+  }
+  .playing .disc img {
+    animation-play-state: running;
+  }
+  .grooves {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background:
+      radial-gradient(circle, #0a090e 0 4%, rgba(255, 255, 255, 0.25) 4.4% 4.8%, transparent 5.2%),
+      repeating-radial-gradient(circle, rgba(0, 0, 0, 0.14) 0 1px, transparent 1.5px 3px),
+      conic-gradient(from 210deg, transparent 0 6%, rgba(255, 255, 255, 0.16) 12%, transparent 19% 51%, rgba(255, 255, 255, 0.1) 57%, transparent 64%);
+    pointer-events: none;
+  }
+  .disc-hover {
+    position: absolute;
+    inset: 9px;
+    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 26px;
+    background: rgba(8, 7, 12, 0.62);
+    opacity: 0;
+    transition: opacity 180ms ease;
+  }
+  .disc-wrap:hover .disc-hover,
+  .disc-hover:focus-within {
+    opacity: 1;
+  }
+  .disc-hover .title {
+    font-size: 13px;
+    max-width: 100%;
+    text-align: center;
+  }
+  .disc-hover .time {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ── Card: tall, cover first ──────────────────────── */
+  .s-card {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 16px 16px 14px;
+  }
+  .card-light {
+    position: absolute;
+    inset: -20% -20% 30%;
+    z-index: -1;
+    background: radial-gradient(closest-side, color-mix(in oklab, var(--c1) 55%, transparent), transparent);
+    filter: blur(30px);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+  .card-art {
+    position: relative;
+    aspect-ratio: 1;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--hairline), 0 18px 40px -14px color-mix(in oklab, var(--c1) 70%, black);
+  }
+  .card-art img,
+  .card-art .art-empty {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .card-meta {
+    margin-top: 14px;
+    text-align: center;
+  }
+  .card-meta .title {
+    font-size: 17px;
+  }
+  .card-bar {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin-top: 12px;
+  }
+  .card-bar .time {
+    font-size: 11px;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .line,
+  .pill-line,
+  .lyric-line {
+    position: relative;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.13);
+    overflow: hidden;
+  }
+  .line i,
+  .pill-line i,
+  .lyric-line i {
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--c1), var(--c2));
+    transform-origin: left center;
+    transition: transform 250ms linear;
+  }
+  .card-controls {
+    margin-top: 8px;
+    gap: 14px;
+  }
+
+  /* ── Pill: a slim capsule ─────────────────────────── */
+  .s-pill {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 12px 0 8px;
+    border-radius: 999px;
+    background: linear-gradient(100deg, color-mix(in oklab, var(--c1) 22%, rgba(16, 14, 22, 0.94)), rgba(16, 14, 22, 0.94) 55%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+  .s-pill .alt-empty {
+    width: 100%;
+  }
+  .pill-art {
+    position: relative;
+    flex: none;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    overflow: hidden;
+    box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.12), 0 0 18px -4px var(--c1);
+  }
+  .pill-art img,
+  .pill-art .art-empty {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    animation: turn 10s linear infinite;
+    animation-play-state: paused;
+  }
+  .playing .pill-art img {
+    animation-play-state: running;
+  }
+  .pill-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .pill-meta .title {
+    font-size: 14px;
+    line-height: 19px;
+  }
+  .pill-meta .artist {
+    font-size: 12px;
+    line-height: 16px;
+  }
+  .s-pill .icon {
+    width: 32px;
+    height: 32px;
+  }
+  .s-pill .play {
+    width: 38px;
+    height: 38px;
+  }
+  .pill-line {
+    position: absolute;
+    left: 66px;
+    right: 26px;
+    bottom: 5px;
+    height: 2px;
+  }
+
+  /* ── Lyric: the sung line, big ────────────────────── */
+  .s-lyric {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px 14px 14px;
+  }
+  .lyric-art {
+    position: relative;
+    flex: none;
+    width: 72px;
+    height: 72px;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 0 0 1px var(--hairline), 0 8px 24px -8px var(--c1);
+  }
+  .lyric-art img,
+  .lyric-art .art-empty {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .lyric-words {
+    flex: 1;
+    min-width: 0;
+  }
+  .sung,
+  .coming {
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-family: var(--font-lyrics);
+  }
+  .sung {
+    font-size: 21px;
+    line-height: 28px;
+    font-weight: 750;
+    letter-spacing: -0.01em;
+    text-shadow: 0 0 22px color-mix(in oklab, var(--c1) 55%, transparent);
+    animation: rise 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .coming {
+    margin-top: 3px;
+    font-size: 14px;
+    line-height: 19px;
+    color: var(--ink-faint);
+  }
+  @keyframes rise {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+  .lyric-line {
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: 6px;
+    height: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .disc img,
+    .pill-art img,
+    .sung {
+      animation: none;
+    }
   }
 </style>

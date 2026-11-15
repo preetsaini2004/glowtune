@@ -114,6 +114,11 @@ fn glow_effects_roundtrip_and_repair_invalid_values() {
         ("orbit", GlowEffect::Orbit),
         ("distortion", GlowEffect::Distortion),
         ("lava-lamp", GlowEffect::LavaLamp),
+        ("comet", GlowEffect::Comet),
+        ("aurora", GlowEffect::Aurora),
+        ("bars", GlowEffect::Bars),
+        ("neon", GlowEffect::Neon),
+        ("tide", GlowEffect::Tide),
     ] {
         let (theme, warnings) = parse(&format!("[glow]\neffect = '{name}'\neffect_speed = 2.5"));
         assert!(warnings.is_empty());
@@ -148,6 +153,10 @@ fn particles_roundtrip_defaults_and_numeric_repair() {
         ("dots", ParticleStyle::Dots),
         ("stars", ParticleStyle::Stars),
         ("dust", ParticleStyle::Dust),
+        ("embers", ParticleStyle::Embers),
+        ("snow", ParticleStyle::Snow),
+        ("fireflies", ParticleStyle::Fireflies),
+        ("bubbles", ParticleStyle::Bubbles),
     ] {
         let (theme, warnings) = parse(&format!(
             "[glow]\nparticles = '{name}'\nparticle_density = 0.8\nparticle_size = 2.5\nparticle_speed = 1.4\nparticle_sparkle = 0.2\neffect_strength = 0.6\nreverse_motion = true"

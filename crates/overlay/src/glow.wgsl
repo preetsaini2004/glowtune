@@ -97,9 +97,19 @@ fn particle_light(position: f32, depth: f32, time: f32, energy: f32, formation: 
         0.25 + 0.5 * hash(cell + vec2(7.0, 17.0)),
         0.25 + 0.5 * hash(cell + vec2(31.0, 3.0))
     ) + 0.06 * vec2(sin(clock * 0.47 + seed * TAU), cos(clock * 0.31 + seed * TAU));
-    let q = (vec2(fract(arc), fract(row)) - center) * spacing / radius;
+    var c = center;
+    if (u.particles.x == 6.0) {
+        // Fireflies wander further and slower than dots.
+        c = vec2(0.5) + 0.2 * vec2(sin(clock * 0.29 + seed * 17.0), cos(clock * 0.23 + seed * 29.0));
+    }
+    let q = (vec2(fract(arc), fract(row)) - c) * spacing / radius;
     let r = length(q);
     var mote = exp(-r * r * 3.0);
+    if (u.particles.x == 6.0) {
+        // Each one lights up on its own clock, then fades out again.
+        let blink = pow(max(0.0, sin(time * 0.8 + seed * 41.0)), 6.0);
+        mote = exp(-r * r * 2.0) * (0.15 + 1.1 * blink);
+    }
     if (u.particles.x == 2.0) {
         let rays = exp(-abs(q.x) * 9.0 - abs(q.y) * 1.8)
             + exp(-abs(q.y) * 9.0 - abs(q.x) * 1.8);
@@ -112,6 +122,48 @@ fn particle_light(position: f32, depth: f32, time: f32, energy: f32, formation: 
         * (1.0 - smoothstep(0.75, 1.5, depth / u.screen.z));
     return mote * (1.0 - smoothstep(1.5, 2.0, r)) * twinkle
         * edge * formation * (0.6 + 0.4 * energy);
+}
+
+// Particles that move up or down the screen itself (not around the edge):
+// embers and bubbles rise, snow falls. A grid in screen pixels scrolls with
+// time; one mote per occupied cell, swaying a little side to side.
+fn drift_light(p: vec2<f32>, depth: f32, time: f32, energy: f32) -> f32 {
+    if (u.particles.y <= 0.0) { return 0.0; }
+    let kind = u.particles.x;
+    let radius = max(u.particles.z, 0.5);
+    let spacing = max(44.0, radius * 12.0);
+    let clock = time * u.particles.w;
+    let falls = kind == 5.0;
+    let speed = select(52.0, 26.0, falls);
+    var q = p;
+    q.y = q.y + select(clock * speed, -clock * speed, falls);
+    let cell = floor(q / spacing);
+    let seed = hash(cell + vec2(5.0, 91.0));
+    if (seed >= u.particles.y) { return 0.0; }
+    let sway = 0.14 * sin(clock * 0.9 + seed * TAU + cell.y * 1.7);
+    let center = vec2(
+        0.32 + 0.36 * hash(cell + vec2(13.0, 7.0)) + sway,
+        0.3 + 0.4 * hash(cell + vec2(3.0, 29.0))
+    );
+    let local = (fract(q / spacing) - center) * spacing / radius;
+    let r = length(local);
+    var mote = 0.0;
+    var reach = 2.0;
+    if (kind == 4.0) {
+        // Embers flicker fast and burn brighter on the beat.
+        let flicker = 0.55 + 0.45 * sin(time * 9.0 + seed * 40.0);
+        mote = exp(-r * r * 2.6) * flicker * (0.5 + 0.9 * energy);
+    } else if (kind == 5.0) {
+        mote = 0.85 * exp(-r * r * 1.5);
+    } else {
+        // Bubbles: a thin bright ring with a faint glint inside.
+        let ring = r - 1.5;
+        mote = 0.9 * exp(-ring * ring * 7.0) + 0.25 * exp(-pow(length(local - vec2(-0.6, -0.6)), 2.0) * 6.0);
+        reach = 2.4;
+    }
+    let edge = smoothstep(0.0, 3.0, depth)
+        * (1.0 - smoothstep(0.75, 1.5, depth / u.screen.z));
+    return mote * (1.0 - smoothstep(reach - 0.5, reach, r)) * edge * (0.7 + 0.3 * energy);
 }
 
 @fragment
@@ -159,6 +211,47 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
             blobs += exp(-distance * distance);
         }
         formation = 0.22 + 0.78 * smoothstep(0.05, 1.05, blobs);
+    } else if (mode == 6.0) {
+        // Comets: two bright heads half a lap apart, each trailing a long
+        // fading tail behind it. The beat pushes the heads brighter.
+        var tails = 0.0;
+        for (var i = 0; i < 2; i++) {
+            let head = fract(time * 0.09 + f32(i) * 0.5);
+            let behind = fract(head - position);
+            let tail = exp(-behind * 7.0) * (1.0 - smoothstep(0.96, 1.0, behind));
+            let tip = exp(-pow(loop_dist(position, head) / 0.012, 2.0));
+            tails = max(tails, tail * 0.8 + tip * (0.6 + 0.6 * energy));
+        }
+        formation = 0.06 + 0.94 * min(tails, 1.0);
+    } else if (mode == 7.0) {
+        // Aurora: many thin folds that slide and bend slowly, under a broad
+        // swell, like curtains of northern light.
+        let bend = 2.2 * sin(position * TAU * 2.0 + time * 0.21);
+        let folds = 0.5 + 0.5 * sin(position * TAU * 11.0 + bend + time * 0.55);
+        let swell = 0.55 + 0.45 * sin(position * TAU * 3.0 - time * 0.17);
+        formation = 0.25 + 0.75 * pow(folds, 1.6) * swell * (0.85 + 0.3 * energy);
+    } else if (mode == 8.0) {
+        // Equalizer: the edge cut into 96 bars, each jumping to its own
+        // smoothly-changing level, all lifted by the beat.
+        let bars = 96.0;
+        let seg = floor(position * bars);
+        let local = fract(position * bars);
+        let tick = time * 5.0;
+        let level = mix(
+            hash(vec2(seg, floor(tick))),
+            hash(vec2(seg, floor(tick) + 1.0)),
+            smoothstep(0.0, 1.0, fract(tick))
+        );
+        let gap = smoothstep(0.1, 0.22, local) * (1.0 - smoothstep(0.78, 0.9, local));
+        formation = (0.18 + 0.82 * level * level) * (0.55 + 0.6 * energy) * gap;
+    } else if (mode == 9.0) {
+        // Neon: steady, with now and then a quick flicker like a real tube.
+        let blink = hash(vec2(floor(time * 12.0), 7.0));
+        formation = 1.0 - 0.55 * step(0.975, blink);
+    } else if (mode == 10.0) {
+        // Tide: swells roll up both sides of the screen, top and bottom breathe.
+        let up = 0.5 + 0.5 * sin(-rel.y * TAU * 1.5 + time * 0.9);
+        formation = 0.25 + 0.75 * pow(up, 2.0) * (0.8 + 0.4 * energy);
     }
     formation = mix(1.0, formation, u.effects.z);
     breathe = mix(1.0, breathe, u.effects.z);
@@ -175,6 +268,15 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     g *= 1.0 - smoothstep(0.55, 1.0, x);
     // Soft-saturate: strong near the edge without hard clipping.
     g = (1.0 - exp(-g * 1.6)) * formation;
+    if (mode == 9.0) {
+        // Neon: a thin bright tube a little inside the edge, a faint halo
+        // around it, and almost nothing at the very edge.
+        let tube = u.screen.z * 0.16;
+        let off = (max(d, 0.0) - tube) / max(u.screen.z * 0.022, 1.0);
+        let line = exp(-off * off);
+        let halo = exp(-abs(max(d, 0.0) - tube) / (u.screen.z * 0.16)) * 0.32;
+        g = clamp(line + halo, 0.0, 1.0) * formation * (1.0 - smoothstep(0.55, 1.0, x));
+    }
 
     // --- Where around the screen are we? (0..1 loop) ----------------------
     // Aspect-corrected angle, so color blobs are evenly sized on wide screens.
@@ -182,6 +284,10 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     // Gentle organic wobble so it never looks like a static gradient.
     if (mode == 0.0) {
         t += 0.035 * sin(t * TAU * 2.0 + time * 0.23) + 0.018 * sin(t * TAU * 5.0 - time * 0.41);
+    }
+    if (mode == 7.0) {
+        // Aurora colours ripple along the folds rather than sitting still.
+        t += 0.06 * sin(position * TAU * 5.0 + time * 0.3);
     }
     t += select(u.mixing.w, 0.0, mode == 1.0);
 
@@ -193,7 +299,10 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     // Slow light ripples travelling along the edge.
     let shimmer = select(1.0, 0.88 + 0.12 * sin(t * TAU * 3.0 - time * 0.7), mode == 0.0);
     // The core near the edge runs slightly hotter (whiter), like a real light.
-    let hot = core * core * (0.06 + 0.22 * energy);
+    var hot = core * core * (0.06 + 0.22 * energy);
+    if (mode == 9.0) {
+        hot = clamp(g - 0.6, 0.0, 1.0) * 0.8; // the tube's core is near white
+    }
     color = mix(color, vec3(1.0), clamp(hot, 0.0, 0.35));
 
     // Quiet parts rest a little dimmer; kicks push the light outward and brighter.
@@ -211,9 +320,23 @@ fn fs(@builtin(position) frag: vec4<f32>) -> @location(0) vec4<f32> {
     let dither_mask = smoothstep(0.0, 0.03, a);
     rgb = max(rgb + vec3(n) * dither_mask, vec3(0.0));
     alpha = clamp(alpha + n * dither_mask, 0.0, 1.0);
-    let motes = clamp(particle_light(position, d, time, energy, formation)
-        * intensity * fade, 0.0, 1.0);
-    let mote_color = linear_to_srgb(mix(color, vec3(1.0), 0.55));
+    let kind = u.particles.x;
+    var light = 0.0;
+    if (kind == 4.0 || kind == 5.0 || kind == 7.0) {
+        light = drift_light(p, d, time, energy);
+    } else {
+        light = particle_light(position, d, time, energy, max(formation, 0.35));
+    }
+    let motes = clamp(light * intensity * fade, 0.0, 1.0);
+    var tint = mix(color, vec3(1.0), 0.55);
+    if (kind == 4.0) {
+        tint = mix(color, vec3(1.0, 0.42, 0.12), 0.55); // embers run warm
+    } else if (kind == 5.0) {
+        tint = mix(color, vec3(1.0), 0.8); // snow is nearly white
+    } else if (kind == 6.0) {
+        tint = mix(color, vec3(0.85, 1.0, 0.45), 0.45); // fireflies glow yellow-green
+    }
+    let mote_color = linear_to_srgb(tint);
     rgb = clamp(rgb + mote_color * motes, vec3(0.0), vec3(1.0));
     alpha = clamp(alpha + motes * 0.6 * (1.0 - alpha), 0.0, 1.0);
     return vec4(rgb, alpha);

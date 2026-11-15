@@ -4,7 +4,7 @@ import { mkdir, readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 const cwd = fileURLToPath(new URL("../", import.meta.url));
-const clips = [
+const defaults = [
   "glow",
   "scene",
   "lyrics",
@@ -16,6 +16,11 @@ const clips = [
   "themes",
   "screens",
 ];
+const clips = process.argv.length > 2 ? process.argv.slice(2) : defaults;
+assert(
+  clips.every((name) => /^[a-z][a-z0-9-]*$/.test(name)),
+  "Invalid clip name",
+);
 await mkdir(new URL("../out/clips/", import.meta.url), { recursive: true });
 let total = 0;
 for (const name of clips) {

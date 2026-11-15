@@ -22,10 +22,12 @@
     } catch { if (request === sequence) queue = { items: [], message: "Queue unavailable. Try refreshing." }; }
     finally { if (request === sequence) busy = false; }
   }
+  // Reload only for a real song change (a new track object with the same song,
+  // e.g. its art arriving, must not), and keep the old list on screen until
+  // the new one is in: clearing it first made the panel flash.
+  const song = $derived(`${np.track?.title ?? ""}\n${np.track?.source ?? ""}`);
   $effect(() => {
-    void np.track?.title;
-    void np.track?.source;
-    queue = { items: [], message: "Loading the player’s queue…" };
+    void song;
     refresh();
   });
   $effect(() => {

@@ -220,6 +220,10 @@ pub fn overlay_config(theme: &Theme, settings: &Settings) -> OverlayConfig {
             themes::ParticleStyle::Dots => overlay::ParticleStyle::Dots,
             themes::ParticleStyle::Stars => overlay::ParticleStyle::Stars,
             themes::ParticleStyle::Dust => overlay::ParticleStyle::Dust,
+            themes::ParticleStyle::Embers => overlay::ParticleStyle::Embers,
+            themes::ParticleStyle::Snow => overlay::ParticleStyle::Snow,
+            themes::ParticleStyle::Fireflies => overlay::ParticleStyle::Fireflies,
+            themes::ParticleStyle::Bubbles => overlay::ParticleStyle::Bubbles,
         },
         effect: match g.effect {
             themes::GlowEffect::Ambient => overlay::GlowEffect::Ambient,
@@ -228,6 +232,11 @@ pub fn overlay_config(theme: &Theme, settings: &Settings) -> OverlayConfig {
             themes::GlowEffect::Orbit => overlay::GlowEffect::Orbit,
             themes::GlowEffect::Distortion => overlay::GlowEffect::Distortion,
             themes::GlowEffect::LavaLamp => overlay::GlowEffect::LavaLamp,
+            themes::GlowEffect::Comet => overlay::GlowEffect::Comet,
+            themes::GlowEffect::Aurora => overlay::GlowEffect::Aurora,
+            themes::GlowEffect::Bars => overlay::GlowEffect::Bars,
+            themes::GlowEffect::Neon => overlay::GlowEffect::Neon,
+            themes::GlowEffect::Tide => overlay::GlowEffect::Tide,
         },
         corner_radius: match g.corners {
             Corners::Rounded => OverlayConfig::default().corner_radius,

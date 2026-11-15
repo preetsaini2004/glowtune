@@ -36,6 +36,14 @@ pub fn clean_query(title: &str, artist: &str) -> Query {
             title = track.trim();
         }
     }
+    // Playlists and fan channels put their own name in the artist field
+    // ("Pollywood Chartbusters | Over the years"); the singers then follow the
+    // video tag: "Song (Original Video): Singer | Singer 2 | Producer".
+    if artist.contains('|')
+        && let Some(singer) = credits_after_video_tag(title)
+    {
+        artist = singer;
+    }
     // Credits after the video tag ("Song (Official Video) Producer : Label").
     let mut title = cut_at_video_tag(title);
     if let Some((first, _)) = title.split_once(" : ")
@@ -132,6 +140,23 @@ fn cut_at_video_tag(title: &str) -> String {
         search = start + end_rel + 1;
     }
     title.to_owned()
+}
+
+/// "Song (Original Video): Singer | …" → "Singer".
+fn credits_after_video_tag(title: &str) -> Option<&str> {
+    let before = cut_at_video_tag(title);
+    if before.len() == title.len() {
+        return None;
+    }
+    let rest = &title[before.len()..];
+    let close = rest.find([')', ']'])?;
+    let singer = rest[close + 1..]
+        .trim_start()
+        .strip_prefix(':')?
+        .split('|')
+        .next()?
+        .trim();
+    (!singer.is_empty() && singer.chars().count() <= 40).then_some(singer)
 }
 
 fn strip_channel(artist: &str) -> &str {
@@ -299,6 +324,13 @@ mod video_title_tests {
     #[test]
     fn youtube_music_video_titles() {
         for (title, artist, expected_title, expected_artist) in [
+            // A playlist channel as the "artist": the singer is in the title.
+            (
+                "Angreji Beat (Original Video): Yo Yo Honey Singh | Gippy Grewal | Rimpy Prince | Veet Baljit",
+                "Pollywood Chartbusters | Over the years ⭐️",
+                "Angreji Beat",
+                "Yo Yo Honey Singh",
+            ),
             (
                 "Diljit Dosanjh : Devil (Official Video) Intense : Hizzy : I'm an Artist Bro",
                 "Diljit Dosanjh",

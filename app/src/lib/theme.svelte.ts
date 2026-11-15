@@ -26,11 +26,11 @@ export type Theme = {
     intensity: number;
     beat_reactivity: number;
     drift_speed: number;
-    effect: "ambient" | "still" | "pulse" | "orbit" | "distortion" | "lava-lamp";
+    effect: "ambient" | "still" | "pulse" | "orbit" | "distortion" | "lava-lamp" | "comet" | "aurora" | "bars" | "neon" | "tide";
     effect_speed: number;
     effect_strength: number;
     reverse_motion: boolean;
-    particles: "off" | "dots" | "stars" | "dust";
+    particles: "off" | "dots" | "stars" | "dust" | "embers" | "snow" | "fireflies" | "bubbles";
     particle_density: number;
     particle_size: number;
     particle_speed: number;

@@ -13,12 +13,14 @@ import {
 } from "remotion";
 import { DotField } from "./DotField";
 import greenPulse from "./green-pulse.json";
+import productionPulse from "./green-0.2-pulse.json";
 import {
   BEAT_SECONDS,
   CLIP_SECONDS,
   FPS,
   features,
   timeline,
+  productionTimeline,
   type Feature,
 } from "./edit";
 
@@ -116,17 +118,22 @@ function Scene({
   start,
   trim = 0,
   repository,
+  production = false,
 }: {
-  id: (typeof timeline)[number]["id"];
+  id:
+    | (typeof timeline)[number]["id"]
+    | (typeof productionTimeline)[number]["id"];
   duration: number;
   start: number;
   trim?: number;
   repository: string;
+  production?: boolean;
 }) {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const t = frame / fps;
-  const beat = greenPulse[start * fps + frame] ?? 0;
+  const beat =
+    (production ? productionPulse : greenPulse)[start * fps + frame] ?? 0;
   const drop = Math.sin(Math.PI * Math.min(1, t / 0.52)) ** 2;
   const entering = interpolate(t, [0, 0.72], [0, 1], {
     ...clamp,
@@ -140,7 +147,8 @@ function Scene({
   );
   const opening = id === "opening";
   const ending = id === "end";
-  const featured = id === "scene" || id === "glow" || id === "cinema";
+  const featured =
+    id === "scene" || id === "glow" || id === "cinema" || id === "stars-lyrics";
   const detail =
     id === "cinema"
       ? {
@@ -197,7 +205,9 @@ function Scene({
             </div>
             {ending && (
               <div style={{ fontSize: 26, color: "#e5e3d1bf", marginTop: 16 }}>
-                {repository || "GitHub Releases"}
+                {production
+                  ? "Glowtune 0.2 · github.com/preetsaini2004/glowtune"
+                  : repository || "GitHub Releases"}
               </div>
             )}
           </div>
@@ -219,6 +229,12 @@ function Scene({
           <br />
           Official video by Guy Larsen &amp; Taha Khan · Excerpt adapted under
           CC BY 3.0
+          {production && (
+            <>
+              <br />
+              Source: Wikimedia Commons · Full credits: video/README.md
+            </>
+          )}
         </div>
       )}
       {id === "promise" && (
@@ -321,6 +337,7 @@ function Scene({
                 ")",
             }}
           />
+          {production && <ShotLabel feature={id as Feature} trim={trim} />}
           <div
             style={{
               position: "absolute",
@@ -369,26 +386,39 @@ function Scene({
   );
 }
 
-export function Hero({ repository }: { repository: string }) {
+export function Hero({
+  repository,
+  production = false,
+}: {
+  repository: string;
+  production?: boolean;
+}) {
   return (
     <Frame>
-      <Html5Audio src={staticFile("capture/green.wav")} />
-      {timeline.map(({ id, start, end, ...shot }) => (
-        <Sequence
-          key={id}
-          name={id}
-          from={start * FPS}
-          durationInFrames={(end - start) * FPS}
-        >
-          <Scene
-            id={id}
-            duration={end - start}
-            start={start}
-            trim={"trim" in shot ? shot.trim : 0}
-            repository={repository}
-          />
-        </Sequence>
-      ))}
+      <Html5Audio
+        src={staticFile(
+          production ? "capture/green-0.2.wav" : "capture/green.wav",
+        )}
+      />
+      {(production ? productionTimeline : timeline).map(
+        ({ id, start, end, ...shot }) => (
+          <Sequence
+            key={id}
+            name={id}
+            from={start * FPS}
+            durationInFrames={(end - start) * FPS}
+          >
+            <Scene
+              id={id}
+              duration={end - start}
+              start={start}
+              trim={"trim" in shot ? shot.trim : 0}
+              repository={repository}
+              production={production}
+            />
+          </Sequence>
+        ),
+      )}
     </Frame>
   );
 }
@@ -400,6 +430,52 @@ const focusFor: Partial<Record<Feature, { scale: number; origin: string }>> = {
   controls: { scale: 1.55, origin: "40% 94%" },
   themes: { scale: 1.18, origin: "32% 20%" },
 };
+
+// Editorial labels sit outside the recorded app; the UI underneath is unmodified.
+function ShotLabel({ feature, trim = 0 }: { feature: Feature; trim?: number }) {
+  const t = useCurrentFrame() / FPS + trim;
+  let label = "";
+  if (feature === "beat-walls")
+    label = t < 2.5 ? "Water · wipe to reveal" : t < 4.8 ? "Frost" : "Halftone";
+  if (feature === "vinyl-dock")
+    label =
+      ["Bar", "Pill", "Islands", "Line"][Math.min(3, Math.floor(t / 1.65))] +
+      " dock";
+  if (feature === "glow-shapes") {
+    label = [
+      "Comets · Embers",
+      "Aurora · Snow",
+      "Equalizer · Fireflies",
+      "Neon · Bubbles",
+      "Tide · Bubbles",
+    ][Math.min(4, Math.floor(t / 1.4))];
+  }
+  if (feature === "hotkeys")
+    label = t < 2.7 ? "Ctrl + Alt + →" : "Ctrl + Alt + ↑";
+  if (feature === "presets" && t >= 2.3)
+    label = t < 4.4 ? "Ctrl + Alt + 1" : "Ctrl + Alt + 2";
+  if (feature === "lyric-card" && t < 2) label = "Ctrl + Alt + C";
+  if (!label) return null;
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: "11%",
+        left: "50%",
+        transform: "translateX(-50%)",
+        padding: "10px 23px",
+        borderRadius: 999,
+        background: "#11151be8",
+        border: "1px solid #ffffff24",
+        fontSize: 22,
+        color: ink,
+        letterSpacing: "0.03em",
+      }}
+    >
+      {label}
+    </div>
+  );
+}
 
 export function Clip({ feature }: { feature: Feature }) {
   const frame = useCurrentFrame();
@@ -441,6 +517,7 @@ export function Clip({ feature }: { feature: Feature }) {
           />
         )}
       </AbsoluteFill>
+      <ShotLabel feature={feature} />
       <div
         style={{
           position: "absolute",
@@ -467,13 +544,13 @@ export function Clip({ feature }: { feature: Feature }) {
   );
 }
 
-export function Poster() {
+export function Poster({ production = false }: { production?: boolean }) {
   return (
     <Frame>
       <DotField colors={colors} density={0.95} beat={0.44} />
       <Screen
-        name="scene"
-        trim={20.2}
+        name={production ? "stars-lyrics" : "scene"}
+        trim={production ? 5.6 : 20.2}
         style={{ top: 224, width: 1392, borderRadius: 24 }}
       />
       <div
@@ -502,7 +579,9 @@ export function Poster() {
         </span>
       </div>
       <div style={{ ...eyebrow, position: "absolute", right: 266, top: 130 }}>
-        Desktop music companion
+        {production
+          ? "0.2 · Your music, in a new light"
+          : "Desktop music companion"}
       </div>
     </Frame>
   );

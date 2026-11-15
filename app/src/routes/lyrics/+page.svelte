@@ -13,6 +13,20 @@
   import { np } from "$lib/nowPlaying.svelte";
   import { showLyric } from "$lib/clean";
   import { theme } from "$lib/theme.svelte";
+  import { LyricsFollower } from "$lib/lyrics.svelte";
+  import { saveLyricCard } from "$lib/lyricCard";
+  import StageLyrics from "$lib/StageLyrics.svelte";
+
+  // Settings → Lyrics → Desktop look: the theme's own (rise / static /
+  // karaoke, below) or the scene's Stars or Rain.
+  let look = $state<"theme" | "stars" | "rain">("theme");
+  let emojiOn = $state(true);
+  const lyr = new LyricsFollower();
+  $effect(() => {
+    void np.playback;
+    void lyr.lyrics;
+    lyr.schedule();
+  });
 
   type Line = { timeMs: number; text: string };
   type LyricsState = {
@@ -94,7 +108,28 @@
     invoke("lyrics_reset_position").catch(() => {});
   }
 
+  // Ctrl+Alt+C (or the menu): a lyric card of the line being sung.
+  async function makeCard() {
+    try {
+      await saveLyricCard(lyr);
+    } catch (e) {
+      invoke("toast", { icon: "card", text: e instanceof Error ? e.message : String(e) }).catch(() => {});
+    }
+  }
+
   onMount(() => {
+    type S = { desktopLyricsStyle?: string; stageEmoji?: boolean };
+    const take = (s: S) => {
+      const v = s.desktopLyricsStyle;
+      look = v === "stars" || v === "rain" ? v : "theme";
+      emojiOn = s.stageEmoji ?? true;
+    };
+    invoke<S>("get_settings").then(take).catch(() => {});
+    const unSettings = listen<S>("settings", (e) => take(e.payload));
+    const stopLyr = lyr.start();
+    const unCard = listen<string>("make-lyric-card", (e) => {
+      if (e.payload === getCurrentWindow().label) makeCard();
+    });
     const unMove = listen<boolean>("lyrics-move", (e) => (moving = e.payload));
     np.start();
     const unlisten = listen<LyricsState>("lyrics", (e) => (lyrics = e.payload));
@@ -103,6 +138,9 @@
       clearTimeout(timer);
       unlisten.then((f) => f());
       unMove.then((f) => f());
+      unSettings.then((f) => f());
+      unCard.then((f) => f());
+      stopLyr();
     };
   });
 </script>
@@ -114,6 +152,13 @@
   class:shown={visible || moving}
   class:moving
 >
+  {#if look !== "theme"}
+    {#if current}
+      <div class="scene-look">
+        <StageLyrics {lyr} style={look} rate={np.playback.rate || 1} playing={np.playing} light emoji={emojiOn} />
+      </div>
+    {/if}
+  {:else}
   {#key style === "karaoke" ? `${index}:${plan}` : index}
     {#if current}
       <div class="pair" in:fly={enter} out:fly={leave}>
@@ -132,6 +177,7 @@
       </div>
     {/if}
   {/key}
+  {/if}
   {#if moving}
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="mover" onpointerdown={(e) => { if ((e.target as HTMLElement).closest("button")) return; getCurrentWindow().startDragging(); }}>
@@ -146,6 +192,12 @@
 </main>
 
 <style>
+  /* Stars / Rain fill the whole window (it's click-through). */
+  .scene-look {
+    position: absolute;
+    inset: 0;
+    filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.55));
+  }
   .mover {
     position: fixed;
     inset: 6px;

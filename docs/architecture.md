@@ -28,6 +28,7 @@ Glowtune is a Rust workspace with a [Tauri 2](https://tauri.app) app and a [Svel
 | `overlay` | The native screen-edge glow window (winit + wgpu). Hides over full-screen games. |
 | `themes` | Theme files (TOML): schema, validation and hot reload. Bundled themes live in `themes/`. |
 | `adblock_layer` | Network and cosmetic filtering for the service windows (Brave's adblock engine), with a weekly filter-list cache. |
+| `audio_engine` | Sound effects for the service windows: captures the window's own sound, applies the equalizer and the song-to-song blend (crossfade, automix), and plays the result. Windows only for now. |
 | `library` | Local music index with full-text search. Not wired into the app yet. |
 
 ## The app (`app/`)
@@ -40,7 +41,8 @@ Glowtune is a Rust workspace with a [Tauri 2](https://tauri.app) app and a [Svel
 | `app/src-tauri/src/stage.rs` | The desktop scene windows (one per screen with All screens) |
 | `app/src-tauri/src/services.rs` | Service windows: one profile per service, sign-in popups, play / pause through the page's own buttons |
 | `app/src-tauri/src/music_browser.rs`, `music_snapshot.js`, `soundcloud_station.js` | Reads shelves and the Up next queue from the service pages |
-| `app/src-tauri/src/adblock.rs`, `youtube_ads.js` | Hooks the ad blocker into the service windows |
+| `app/src-tauri/src/adblock.rs`, `youtube_ads.js`, `spotify_ads.js` | Hooks the ad blocker into the service windows |
+| `app/src-tauri/src/sound.rs` | Starts and stops the sound engine with the service window; presses Next early for Automix |
 | `app/src-tauri/src/thumbbar.rs` | Previous / play / next buttons under the taskbar preview |
 | `app/src-tauri/src/store.rs` | The theme Store |
 | `app/src/routes/` | Svelte pages: `+page` (player), `stage/` (desktop scene), `lyrics/` (desktop lyrics), `settings/` |

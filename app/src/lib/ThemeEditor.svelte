@@ -280,6 +280,11 @@
         <option value="orbit">Travelling swell · move around the edges</option>
         <option value="distortion">Distortion · shifting ribbons</option>
         <option value="lava-lamp">Lava lamp · merging light blobs</option>
+        <option value="comet">Comets · two lights racing round</option>
+        <option value="aurora">Aurora · folding curtains of light</option>
+        <option value="bars">Equalizer · a ring of bars on the beat</option>
+        <option value="neon">Neon · a thin tube inside the edge</option>
+        <option value="tide">Tide · swells rolling up the sides</option>
       </select>
     </label>
     <p class="hint">Changes the shape and position of the light. Each theme remembers its own effect.</p>
@@ -306,6 +311,10 @@
         <option value="dots">Dots</option>
         <option value="stars">Stars</option>
         <option value="dust">Dust</option>
+        <option value="embers">Embers</option>
+        <option value="snow">Snow</option>
+        <option value="fireflies">Fireflies</option>
+        <option value="bubbles">Bubbles</option>
       </select>
     </label>
     <p class="hint">Small lights follow the glow’s colors, formation and beats. Still freezes their motion too.</p>
@@ -317,6 +326,7 @@
     {/if}
 
     <h3>Lyrics</h3>
+    <p class="hint">For the floating desktop lyrics when their look is Theme (Settings → Lyrics).</p>
     <div class="segmented" role="radiogroup" aria-label="Lyrics animation">
       {#each [["rise", "Rise"], ["karaoke", "Karaoke"], ["static", "Still"]] as [style, label]}
         <button

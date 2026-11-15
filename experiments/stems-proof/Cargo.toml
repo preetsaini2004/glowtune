@@ -1,0 +1,18 @@
+# Local experiment (stem-aware Automix proof). Its own workspace on purpose:
+# not part of the app, check.sh, CI or releases. See HANDOFF section 4.
+[workspace]
+
+[package]
+name = "stems-proof"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+ort = { version = "=2.0.0-rc.15", features = ["directml"] }
+audio_engine = { path = "../../crates/audio_engine" }
+signalsmith-stretch = { path = "../../vendor/signalsmith-stretch" }
+windows-sys ={ version = "0.61", features = ["Win32_System_ProcessStatus", "Win32_System_Threading"] }
+
+[profile.release]
+debug = false

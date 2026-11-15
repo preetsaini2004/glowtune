@@ -11,6 +11,10 @@ use serde::{Deserialize, Serialize};
 use crate::{Error, Result, clean_query};
 
 const NEGATIVE_TTL: u64 = 7 * 24 * 60 * 60;
+/// Misses found before this moment are tried again at once: the search got
+/// better then (channel names as artists, a title-only last try). Move it
+/// forward whenever the search improves.
+const SEARCH_IMPROVED_UNIX: u64 = 1794547125;
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 /// Cached lyrics text or the outcome of a lyrics lookup.
@@ -83,7 +87,8 @@ impl LyricsCache {
         let entry: CacheEntry =
             serde_json::from_slice(&fs::read(self.path(key).ok()?).ok()?).ok()?;
         if let CachedLyrics::NotFound { checked_unix } = entry.lyrics
-            && unix_now().saturating_sub(checked_unix) > NEGATIVE_TTL
+            && (unix_now().saturating_sub(checked_unix) > NEGATIVE_TTL
+                || checked_unix < SEARCH_IMPROVED_UNIX)
         {
             return None;
         }

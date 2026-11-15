@@ -37,7 +37,7 @@ function cover(index, warm, cool) {
       '"/>',
   ).join("");
   const svg =
-    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><defs>' +
+    '<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><defs>' +
     '<radialGradient id="sky" cx=".51" cy=".42" r=".62"><stop stop-color="' +
     cool +
     '" stop-opacity=".72"/>' +
@@ -159,8 +159,16 @@ export const themes = {
   },
 };
 
-export function installFixture({ songs, lyrics, themes, shot, wallpaper }) {
-  if (window !== window.top) return;
+export function installFixture({
+  songs,
+  lyrics,
+  themes,
+  shot,
+  wallpaper,
+  production,
+  captureSettings,
+}) {
+  if (window !== window.top && !production) return;
   const serviceNames = {
     spotify: "Spotify",
     "apple-music": "Apple Music",
@@ -199,10 +207,11 @@ export function installFixture({ songs, lyrics, themes, shot, wallpaper }) {
     blockAds: true,
     useTheme: true,
     disabledThemes: [],
+    ...captureSettings,
   };
   let current = 0;
   let playback = {
-    status: wallpaper || shot === "glow" ? "paused" : "playing",
+    status: wallpaper || production || shot === "glow" ? "paused" : "playing",
     positionMs: wallpaper?.startMs ?? 0,
     rate: 1,
     reportedAtMs: Date.now(),
@@ -227,6 +236,10 @@ export function installFixture({ songs, lyrics, themes, shot, wallpaper }) {
     emit("np-track", songs[current]);
     emit("np-playback", playback);
   };
+  // The 0.2 capture adapter shares events between isolated fixture windows.
+  window.captureEmit = emit;
+  window.captureSelectSong = selectSong;
+  window.captureGlow = () => themes[active].glow;
   // Freeze the app clock to a fictional evening. Relative timers still advance.
   const RealDate = Date;
   const shift = RealDate.parse("2026-01-16T21:24:00Z") - RealDate.now();
