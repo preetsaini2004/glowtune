@@ -19,7 +19,8 @@
 
   // Settings → Lyrics → Desktop look: the theme's own (rise / static /
   // karaoke, below) or the scene's Stars or Rain.
-  let look = $state<"theme" | "stars" | "rain">("theme");
+  const LOOKS = ["stars", "rain", "shards", "code", "melt"] as const;
+  let look = $state<"theme" | (typeof LOOKS)[number]>("theme");
   let emojiOn = $state(true);
   const lyr = new LyricsFollower();
   $effect(() => {
@@ -51,6 +52,8 @@
   const leave = $derived(style === "rise" ? { y: -46, duration: 420, easing: cubicOut } : { y: 0, duration: style === "static" ? 0 : 160 });
 
   const palette = $derived(np.palette);
+  // Theme → Lyrics size (50 = normal) sizes the Stars and Rain looks too.
+  const sizeScale = $derived(Math.max(0.4, Math.min(2.2, (theme.theme?.font.lyrics_size ?? 50) / 50)));
   const synced = $derived(lyrics.status === "synced" && lyrics.lines.length > 0);
   const current = $derived(synced && index >= 0 ? lyrics.lines[index] : null);
   const next = $derived(synced ? lyrics.lines[index + 1] ?? null : null);
@@ -121,7 +124,7 @@
     type S = { desktopLyricsStyle?: string; stageEmoji?: boolean };
     const take = (s: S) => {
       const v = s.desktopLyricsStyle;
-      look = v === "stars" || v === "rain" ? v : "theme";
+      look = LOOKS.includes(v as (typeof LOOKS)[number]) ? (v as (typeof LOOKS)[number]) : "theme";
       emojiOn = s.stageEmoji ?? true;
     };
     invoke<S>("get_settings").then(take).catch(() => {});
@@ -155,7 +158,7 @@
   {#if look !== "theme"}
     {#if current}
       <div class="scene-look">
-        <StageLyrics {lyr} style={look} rate={np.playback.rate || 1} playing={np.playing} light emoji={emojiOn} />
+        <StageLyrics {lyr} style={look} rate={np.playback.rate || 1} playing={np.playing} light emoji={emojiOn} scale={sizeScale} />
       </div>
     {/if}
   {:else}
@@ -182,8 +185,17 @@
     <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div class="mover" onpointerdown={(e) => { if ((e.target as HTMLElement).closest("button")) return; getCurrentWindow().startDragging(); }}>
       {#if !current}<p class="sample">Your lyrics show here</p>{/if}
+      <!-- Corner grips: drag to make the lyrics box bigger or smaller. -->
+      {#each [["nw", "NorthWest"], ["ne", "NorthEast"], ["sw", "SouthWest"], ["se", "SouthEast"]] as [corner, dir]}
+        <button
+          class="grip {corner}"
+          aria-label="Resize the lyrics box"
+          title="Drag to resize"
+          onpointerdown={(e) => { e.stopPropagation(); getCurrentWindow().startResizeDragging(dir as "NorthWest"); }}
+        ></button>
+      {/each}
       <div class="mover-bar">
-        <span>Drag to place your lyrics</span>
+        <span>Drag to place, drag a corner to resize</span>
         <button onclick={resetMove}>Reset</button>
         <button class="done" onclick={finishMove}>Done</button>
       </div>
@@ -210,6 +222,22 @@
   }
   .mover:active {
     cursor: grabbing;
+  }
+  .grip {
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: 2px solid color-mix(in oklab, var(--c1) 70%, white);
+    border-radius: 4px;
+    background: rgba(10, 8, 16, 0.85);
+  }
+  .grip.nw { left: -6px; top: -6px; cursor: nwse-resize; }
+  .grip.se { right: -6px; bottom: -6px; cursor: nwse-resize; }
+  .grip.ne { right: -6px; top: -6px; cursor: nesw-resize; }
+  .grip.sw { left: -6px; bottom: -6px; cursor: nesw-resize; }
+  .grip:hover {
+    background: color-mix(in oklab, var(--c1) 60%, rgba(10, 8, 16, 0.85));
   }
   .sample {
     margin: 0;

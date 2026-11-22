@@ -173,18 +173,18 @@
     if (!dirty || confirm("Discard your unsaved theme changes?")) await changePreferences({ useTheme: input.checked });
     input.checked = enabled;
   }} />
-  <span>Use a theme</span>
+  <span>Use the theme’s colors</span>
 </label>
-<p class="hint">Turn off to use Glowtune’s default look. Your selected theme and files are kept.</p>
+<p class="hint">Off: the colors follow the album art. Everything else in the theme below stays, and you can still change it.</p>
 
-{#if enabled && disabled.includes(activeId)}
+{#if disabled.includes(activeId)}
   <p class="hint">Your selected theme is disabled. Enable it below or pick another theme.</p>
 {/if}
 
 <div class="themes" role="radiogroup" aria-label="Themes">
   {#each themes.filter((t) => !disabled.includes(t.id)) as t (t.id)}
-    <div class="theme" class:on={enabled && t.id === activeId}>
-      <button role="radio" disabled={!enabled} aria-checked={enabled && t.id === activeId} onclick={() => choose(t.id)}>
+    <div class="theme" class:on={t.id === activeId}>
+      <button role="radio" aria-checked={t.id === activeId} onclick={() => choose(t.id)}>
         <span class="swatch" aria-hidden="true">
           {#each t.swatch as c}<i style:background={c}></i>{/each}
         </span>
@@ -216,7 +216,7 @@
   {/each}
 </details>
 
-{#if !draft || !enabled || disabled.includes(activeId)}
+{#if !draft || disabled.includes(activeId)}
   <p class="notice" role="status">{notice}</p>
 {/if}
 
@@ -225,7 +225,7 @@
   <button class="link" onclick={exportFile}>Export this theme</button>
 </div>
 
-{#if draft && enabled && !disabled.includes(activeId)}
+{#if draft && !disabled.includes(activeId)}
   <div class="editor">
     <label class="field wide">
       <span>Name</span>
@@ -233,6 +233,9 @@
     </label>
 
     <h3>Colors</h3>
+    {#if !enabled}
+      <p class="hint">Following the album art. Turn on “Use the theme’s colors” above to set your own.</p>
+    {:else}
     <div class="segmented" role="radiogroup" aria-label="Glow colors">
       {#each [["adaptive", "From the album"], ["gradient", "My gradient"], ["static", "One color"]] as [mode, label]}
         <button
@@ -267,6 +270,7 @@
       <label class="field"><span>Glass tint</span><input type="color" value={rgb(draft.colors.background)} oninput={(e) => { if (draft) draft.colors.background = e.currentTarget.value; edit(); }} /></label>
       <label class="field"><span>Text</span><input type="color" value={rgb(draft.colors.text)} oninput={(e) => { if (draft) draft.colors.text = e.currentTarget.value; edit(); }} /></label>
     </div>
+    {/if}
     <label class="slider"><span>Glass tint strength</span><input type="range" min="0" max="1" step="0.05" bind:value={draft.glass.opacity} oninput={edit} /></label>
     <label class="slider"><span>Corner radius</span><input type="range" min="0" max="40" step="1" bind:value={draft.glass.radius} oninput={edit} /></label>
 
@@ -398,7 +402,7 @@
     width: 100%;
     padding: 10px;
     border: 1px solid var(--hairline);
-    border-radius: 10px;
+    border-radius: calc(var(--radius) * 0.7);
     background: var(--surface);
     display: grid;
     gap: 8px;
@@ -501,7 +505,7 @@
     height: 34px;
     padding: 0 10px;
     border: 1px solid var(--hairline);
-    border-radius: 8px;
+    border-radius: calc(var(--radius) * 0.6);
     background: rgba(0, 0, 0, 0.25);
     color: var(--ink);
     font: inherit;
@@ -520,14 +524,14 @@
   .segmented {
     display: flex;
     padding: 3px;
-    border-radius: 10px;
+    border-radius: calc(var(--radius) * 0.7);
     background: rgba(0, 0, 0, 0.25);
   }
   .segmented button {
     flex: 1;
     height: 30px;
     border: 0;
-    border-radius: 8px;
+    border-radius: calc(var(--radius) * 0.6);
     background: transparent;
     color: var(--ink-soft);
     font-size: 13px;
@@ -568,7 +572,7 @@
     height: 34px;
     padding: 0 12px;
     border: 1px dashed var(--hairline);
-    border-radius: 8px;
+    border-radius: calc(var(--radius) * 0.6);
     background: transparent;
     color: var(--ink-soft);
     font-size: 13px;
@@ -620,7 +624,7 @@
   .actions button {
     height: 32px;
     padding: 0 14px;
-    border-radius: 8px;
+    border-radius: calc(var(--radius) * 0.6);
     font-size: 13px;
     cursor: pointer;
   }

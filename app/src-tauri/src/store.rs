@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::presets::{glow_effect, glow_particles, set_glow};
 use crate::settings::{Settings, parse_hex};
 use crate::theme_service::{DEFAULT_THEME, ThemeService};
 use crate::{AppSettings, save_settings, select_theme};
@@ -37,7 +38,35 @@ pub struct Pack {
     pub toml: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub settings: Option<Map<String, Value>>,
+    /// A line drawn on the sleeve (original words only, never real lyrics).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sample: Option<String>,
+    /// New in this release: the sleeve gets a "New" mark.
+    #[serde(default)]
+    pub fresh: bool,
 }
+
+/// Settings a scene look may set. Their values are checked by `Settings`'
+/// own repair rules (see `Pack::validate`), so the two can't drift apart.
+const LOOK_KEYS: [&str; 13] = [
+    "stageLyricsStyle",
+    "stageClockStyle",
+    "stageWallpaper",
+    "stageArtStyle",
+    "stageDockStyle",
+    "stageMotion",
+    "stageClock",
+    "stageRecent",
+    "stageBeat",
+    "stageEmoji",
+    "desktopLyricsStyle",
+    "artworkColors",
+    "customColors",
+];
+/// A scene look can also set the edge glow's shape and particles. These live
+/// in the theme, not in the settings.
+const GLOW_EFFECT: &str = "glowEffect";
+const GLOW_PARTICLES: &str = "glowParticles";
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -88,6 +117,7 @@ impl Pack {
             || self.colors.iter().any(|c| parse_hex(c).is_none())
             || self.tags.len() > 8
             || self.tags.iter().any(|t| !bounded(t, 32))
+            || self.sample.as_ref().is_some_and(|s| !bounded(s, 60))
         {
             return Err("invalid metadata, colors or reserved id".into());
         }
@@ -108,27 +138,21 @@ impl Pack {
                 }
                 for (key, value) in patch {
                     let valid = match key.as_str() {
-                        "stageLyricsStyle" => value.as_str().is_some_and(|v| {
-                            matches!(v, "flow" | "bold" | "karaoke" | "outline" | "sticker")
-                        }),
-                        "stageClockStyle" => value
-                            .as_str()
-                            .is_some_and(|v| matches!(v, "minimal" | "solid" | "outline")),
-                        "stageWallpaper" => {
-                            value.as_str().is_some_and(|v| matches!(v, "art" | "video"))
-                        }
-                        "stageMotion" | "stageClock" | "stageRecent" | "artworkColors" => {
-                            value.is_boolean()
-                        }
-                        "customColors" => value.as_array().is_some_and(|colors| {
-                            (1..=3).contains(&colors.len())
-                                && colors
-                                    .iter()
-                                    .all(|c| c.as_str().is_some_and(|c| parse_hex(c).is_some()))
-                        }),
-                        _ => false,
+                        GLOW_EFFECT => value.as_str().and_then(glow_effect).is_some(),
+                        GLOW_PARTICLES => value.as_str().and_then(glow_particles).is_some(),
+                        key => LOOK_KEYS.contains(&key),
                     };
                     if !valid {
+                        return Err(format!("invalid preset field: {key}"));
+                    }
+                }
+                // Every value must survive the settings' own repairs unchanged
+                // (a style name they don't know would quietly become another).
+                let repaired =
+                    serde_json::to_value(self.apply_to(&Settings::default())?.sanitized())
+                        .map_err(|e| e.to_string())?;
+                for (key, value) in self.look() {
+                    if repaired.get(key) != Some(value) {
                         return Err(format!("invalid preset field: {key}"));
                     }
                 }
@@ -167,21 +191,41 @@ impl Pack {
         Ok(theme)
     }
 
+    /// The look's settings, without its glow (which belongs to the theme).
+    fn look(&self) -> impl Iterator<Item = (&String, &Value)> {
+        self.settings
+            .iter()
+            .flatten()
+            .filter(|(key, _)| *key != GLOW_EFFECT && *key != GLOW_PARTICLES)
+    }
+
+    fn glow(&self, key: &str) -> Option<&str> {
+        self.settings.as_ref()?.get(key)?.as_str()
+    }
+
     fn apply_to(&self, settings: &Settings) -> Result<Settings, String> {
+        if self.settings.is_none() {
+            return Err("not a scene look".into());
+        }
         let mut value = serde_json::to_value(settings).map_err(|e| e.to_string())?;
-        let patch = self.settings.as_ref().ok_or("not a scene look")?;
         value
             .as_object_mut()
             .ok_or("invalid settings")?
-            .extend(patch.clone());
+            .extend(self.look().map(|(k, v)| (k.clone(), v.clone())));
         serde_json::from_value(value).map_err(|e| e.to_string())
     }
 
+    /// `current`: the settings, plus `glowEffect` / `glowParticles` from the
+    /// theme when its glow can be changed (otherwise those aren't compared).
     fn active_preset(&self, current: &Value) -> bool {
         self.settings.as_ref().is_some_and(|patch| {
-            patch
-                .iter()
-                .all(|(key, value)| current.get(key) == Some(value))
+            patch.iter().all(|(key, value)| {
+                let glow = key == GLOW_EFFECT || key == GLOW_PARTICLES;
+                match current.get(key) {
+                    Some(now) => now == value,
+                    None => glow,
+                }
+            })
         })
     }
 }
@@ -347,15 +391,29 @@ pub async fn store_catalog(app: AppHandle) -> Vec<PackView> {
         .lock()
         .map(|s| s.clone())
         .unwrap_or_default();
-    let current = serde_json::to_value(settings).unwrap_or_default();
+    let mut current = serde_json::to_value(settings).unwrap_or_default();
+    if service.look_shown()
+        && let Some(map) = current.as_object_mut()
+    {
+        let glow = service.current().glow;
+        map.insert(
+            GLOW_EFFECT.into(),
+            serde_json::to_value(glow.effect).unwrap_or_default(),
+        );
+        map.insert(
+            GLOW_PARTICLES.into(),
+            serde_json::to_value(glow.particles).unwrap_or_default(),
+        );
+    }
     packs
         .into_iter()
         .map(|pack| {
             let is_theme = pack.kind == Kind::Theme;
             PackView {
                 installed: is_theme && cards.iter().any(|c| c.id == pack.id && !c.bundled),
+                // With the theme's colors off its look still shows: in use.
                 active: if is_theme {
-                    service.enabled() && active == pack.id
+                    service.look_shown() && active == pack.id
                 } else {
                     pack.active_preset(&current)
                 },
@@ -383,8 +441,29 @@ pub async fn store_install(id: String, app: AppHandle) -> Result<(), String> {
                 .map_err(|e| e.to_string())?
                 .clone();
             save_settings(pack.apply_to(&current)?, &app)?;
+            let (effect, particles) = (pack.glow(GLOW_EFFECT), pack.glow(GLOW_PARTICLES));
+            if effect.is_some() || particles.is_some() {
+                set_glow(&app, effect, particles);
+            }
         }
     }
+    Ok(())
+}
+
+/// Puts an installed theme back to the Crate's current version, replacing
+/// the user's own changes to it (the UI asks first).
+#[tauri::command]
+pub async fn store_reinstall(id: String, app: AppHandle) -> Result<(), String> {
+    let pack = find(&app, &id).await?;
+    if pack.kind != Kind::Theme {
+        return Err("Only themes can be reinstalled.".into());
+    }
+    let service = app.state::<std::sync::Arc<ThemeService>>();
+    service.replace_pack(&pack.id, &pack.theme()?)?;
+    if service.reload_if_active(&pack.id).is_some() {
+        crate::apply_theme(&app, &service.current());
+    }
+    let _ = app.emit("themes-changed", &pack.id);
     Ok(())
 }
 
@@ -426,8 +505,10 @@ mod tests {
 
     #[test]
     fn every_bundled_pack_validates() {
+        // A pack the app rejects silently disappears from the Crate: every
+        // bundled one must be accepted (regenerate with scripts/build-crate.mjs).
         let raw: Catalog = serde_json::from_str(BUNDLED).unwrap();
-        assert_eq!(raw.packs.len(), 14);
+        assert_eq!(raw.packs.len(), 29);
         for value in raw.packs {
             serde_json::from_value::<Pack>(value)
                 .unwrap()
@@ -435,8 +516,9 @@ mod tests {
                 .unwrap();
         }
         let packs = bundled();
-        assert_eq!(packs.len(), 14);
-        assert_eq!(packs.iter().filter(|p| p.kind == Kind::Theme).count(), 8);
+        assert_eq!(packs.len(), 29);
+        assert_eq!(packs.iter().filter(|p| p.kind == Kind::Theme).count(), 12);
+        assert!(packs.iter().all(|p| p.sample.is_some()));
     }
 
     #[test]
@@ -466,6 +548,13 @@ mod tests {
             serde_json::json!({"stageLyricsStyle": "unknown"}),
             serde_json::json!({"stageMotion": "yes"}),
             serde_json::json!({"customColors": ["#bad"]}),
+            serde_json::json!({"customColors": ["#111111", "#222222", "#333333", "#444444"]}),
+            serde_json::json!({"stageWallpaper": "lava"}),
+            serde_json::json!({"stageDockStyle": "floating"}),
+            serde_json::json!({"desktopLyricsStyle": "orbit"}),
+            serde_json::json!({"storeUrl": "https://evil.test"}),
+            serde_json::json!({"glowEffect": "fireworks"}),
+            serde_json::json!({"glowParticles": 3}),
             serde_json::json!({}),
         ] {
             let mut value = serde_json::to_value(&preset).unwrap();
@@ -485,7 +574,7 @@ mod tests {
         let mut remote = pack.clone();
         remote.name = "Remote edition".into();
         let merged = merge(bundled(), vec![remote]);
-        assert_eq!(merged.len(), 14);
+        assert_eq!(merged.len(), 29);
         assert_eq!(merged[0].name, "Remote edition");
     }
 
@@ -521,8 +610,26 @@ mod tests {
         assert_eq!(load(&url, &cache).await[0].name, "Cached edition");
         assert_eq!(load("", &cache).await[0].name, bundled()[0].name);
         std::fs::write(&cache, "corrupt cache").unwrap();
-        assert_eq!(load(&url, &cache).await.len(), 14);
+        assert_eq!(load(&url, &cache).await.len(), 29);
         std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn looks_set_the_glow_through_the_theme_not_the_settings() {
+        let look = bundled().into_iter().find(|p| p.id == "frosted").unwrap();
+        assert_eq!(look.glow(GLOW_EFFECT), Some("aurora"));
+        assert_eq!(look.glow(GLOW_PARTICLES), Some("snow"));
+        let applied = look.apply_to(&Settings::default()).unwrap();
+        let mut current = serde_json::to_value(&applied).unwrap();
+        assert!(current.get(GLOW_EFFECT).is_none());
+        assert_eq!(applied.stage_wallpaper, "frost");
+        // Without the theme's glow to compare, the settings decide.
+        assert!(look.active_preset(&current));
+        current[GLOW_EFFECT] = Value::String("ambient".into());
+        current[GLOW_PARTICLES] = Value::String("snow".into());
+        assert!(!look.active_preset(&current));
+        current[GLOW_EFFECT] = Value::String("aurora".into());
+        assert!(look.active_preset(&current));
     }
 
     #[test]
@@ -563,6 +670,14 @@ mod tests {
                 service
                     .install_pack("different-id", &themes::Theme::default())
                     .is_err()
+            );
+            // Reinstall replaces the user's copy with the catalog's.
+            service
+                .replace_pack("different-id", &themes::Theme::default())
+                .unwrap();
+            assert_eq!(
+                service.select("different-id").unwrap().meta.name,
+                themes::Theme::default().meta.name
             );
             assert!(service.install_pack("../bad", &theme).is_err());
             assert!(service.install_pack(DEFAULT_THEME, &theme).is_err());

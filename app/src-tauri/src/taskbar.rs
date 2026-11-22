@@ -130,6 +130,8 @@ fn start(app: &AppHandle, w: &tauri::WebviewWindow) {
     let shown = state.shown.clone();
     let Ok(hwnd) = w.hwnd() else { return };
     let hwnd = hwnd.0 as isize;
+    // The glow stays just under the strip, not over it.
+    overlay::keep_below(Some(hwnd));
     let _ = std::thread::Builder::new()
         .name("glowtune-taskbar".into())
         .spawn(move || {
@@ -144,6 +146,7 @@ fn stop(app: &AppHandle) {
     if let Some(state) = app.try_state::<TaskbarState>() {
         state.shown.store(false, Ordering::SeqCst);
     }
+    overlay::keep_below(None);
 }
 
 /// Shows `w` topmost without activating it (a game in front keeps focus).

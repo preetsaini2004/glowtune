@@ -238,6 +238,18 @@ impl Overlay {
     }
 }
 
+/// A window of the app's own that must stay above the glow (the taskbar
+/// player, which keeps itself on top of the taskbar): the glow re-raises
+/// itself to just below it, instead of to the very top. Both re-raising to
+/// the top made them swap places every second, and the glow flickered over
+/// the player. `None` = the very top again.
+pub fn keep_below(hwnd: Option<isize>) {
+    #[cfg(windows)]
+    win::KEEP_BELOW.store(hwnd.unwrap_or(0), std::sync::atomic::Ordering::Relaxed);
+    #[cfg(not(windows))]
+    let _ = hwnd;
+}
+
 /// Top-left corner (physical pixels) of the screen where a fullscreen app or
 /// game is in front right now, if any. Cheap; safe to call from any thread.
 pub fn fullscreen_screen() -> Option<(i32, i32)> {

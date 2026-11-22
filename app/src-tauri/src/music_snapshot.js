@@ -132,7 +132,7 @@
   const queueRows0 = queueRoot ? [...queueRoot.querySelectorAll(spotify ? '[data-testid="tracklist-row"], [role="row"], [data-encore-id="listRow"]' : youtube ? (queueRoot.querySelector('ytmusic-player-queue-item') ? 'ytmusic-player-queue-item' : 'ytmusic-responsive-list-item-renderer') : apple ? '.songs-list-row, .track-lockup' : '.queueItemView:not(.m-dimmed)')] : [];
   // Rows can nest (a row inside a list row): keep only the innermost ones.
   const queueRows = spotify ? queueRows0.filter(r => !queueRows0.some(o => o !== r && r.contains?.(o))) : queueRows0;
-  const current = spotify ? document.querySelector('[data-testid="now-playing-widget"] [data-testid="context-item-link"]')
+  const current = spotify ? document.querySelector('[data-testid^="now-playing-widget"] [data-testid="context-item-link"], [data-testid^="now-playing-widget"] [data-testid="context-item-info-title"]')
     : youtube ? document.querySelector('ytmusic-player-bar .title')
     : apple ? document.querySelector('.lcd-meta__primary') : document.querySelector('.playbackSoundBadge__titleLink');
   // SoundCloud's title link text also holds a hidden "Current track:" label and
@@ -166,7 +166,9 @@
     pageUrl: location.href,
     items: collect(document.querySelectorAll(selectors)),
     queue: queueItems,
-    current: currentText,
+    // Spotify renames its now-playing box now and then: the page's own
+    // media session title (what Windows shows) is the fallback.
+    current: currentText || String((typeof navigator !== 'undefined' && navigator.mediaSession?.metadata?.title) || '').replace(/\s+/g, ' ').trim().slice(0, 180),
     debug,
     queueVisible: Boolean(queueRoot),
     // SoundCloud's "Autoplay station" switch (shown under the queue).

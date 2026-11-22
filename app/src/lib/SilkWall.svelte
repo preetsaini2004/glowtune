@@ -1,6 +1,7 @@
 <script lang="ts">
-  // "Silk" wallpaper: white silk folding slowly around a dark hole, and the
-  // album art showing through the hole. The hole is cut around what's on
+  // "Silk" wallpaper: sheer silk in the song's colours folding slowly around
+  // a hole, and the album cover showing through the hole (and, softly,
+  // through the silk itself: it never hides the cover). The hole is cut around what's on
   // screen (lyrics, album, clock: wherever Edit layout put them), so words
   // always sit on the dark part.
   //
@@ -111,8 +112,11 @@ void main() {
   float silkA = smoothstep(-0.01, 0.09, d);
   // Smoke just inside the edge, fading toward the middle.
   float rim = (1.0 - silkA) * smoothstep(-0.22, 0.0, d);
-  float a = silkA + rim * 0.85 * (1.0 - silkA);
-  gl_FragColor = vec4(silk * silkA, a); // premultiplied: the rim is black
+  // Sheer: the folds catching the light are the most opaque, the shadows
+  // let the cover through.
+  float sheer = silkA * mix(0.32, 0.72, smoothstep(0.25, 1.0, diff));
+  float a = sheer + rim * 0.55 * (1.0 - silkA);
+  gl_FragColor = vec4(silk * sheer, a); // premultiplied: the rim is dark
 }`;
 
   let canvas: HTMLCanvasElement | undefined = $state();
@@ -190,8 +194,9 @@ void main() {
       // Holes glide to where the content moved (no jump while editing).
       const k = Math.min(1, dt * 4);
       holes = holes.map((v, i) => v + (target[i] - v) * k);
-      const light = mix3([0.95, 0.95, 0.96], rgb(colors[0], [0.6, 0.6, 0.7]), 0.1);
-      const shade = mix3([0.32, 0.32, 0.35], rgb(colors[1] ?? colors[0], [0.3, 0.3, 0.4]).map((v) => v * 0.5), 0.3);
+      // The song's own colours, softened: never a white sheet over the cover.
+      const light = mix3(rgb(colors[0], [0.6, 0.6, 0.7]), [0.92, 0.92, 0.94], 0.35).map((v) => v * 0.85);
+      const shade = rgb(colors[1] ?? colors[0], [0.3, 0.3, 0.4]).map((v) => v * 0.22);
       gl.uniform2f(loc.uRes, c.width, c.height);
       gl.uniform1f(loc.uTime, clock);
       gl.uniform3fv(loc.uLight, light);

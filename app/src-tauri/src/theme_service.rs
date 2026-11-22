@@ -34,6 +34,9 @@ pub struct ThemeCard {
 pub struct ThemeService {
     store: ThemeStore,
     enabled: AtomicBool,
+    /// "Use a theme" off: keep the theme's look (glow shape, fonts, lyric
+    /// style, glass) but drop its colors, which then follow the album art.
+    colors_off: AtomicBool,
     user_dir: PathBuf,
     /// Active theme id and the theme currently shown (may be an unsaved preview).
     active: Mutex<(String, Theme)>,
@@ -60,6 +63,7 @@ impl ThemeService {
         Ok(Arc::new(Self {
             store,
             enabled: AtomicBool::new(true),
+            colors_off: AtomicBool::new(false),
             user_dir,
             active: Mutex::new((id, theme)),
             watcher: Mutex::new(None),
@@ -79,20 +83,38 @@ impl ThemeService {
     }
 
     pub fn current(&self) -> Theme {
-        if !self.enabled.load(Ordering::Relaxed) {
+        let colors_off = self.colors_off.load(Ordering::Relaxed);
+        if !self.enabled.load(Ordering::Relaxed) && !colors_off {
             return Theme::default();
         }
-        self.active.lock().map(|a| a.1.clone()).unwrap_or_default()
+        let mut theme = self.active.lock().map(|a| a.1.clone()).unwrap_or_default();
+        if colors_off {
+            theme.colors = themes::Colors::default();
+        }
+        theme
     }
 
-    /// Retain the chosen theme and preview while showing built-in defaults.
+    /// "Use a theme" off keeps the theme's look with album colors; a theme
+    /// switched off in the list shows the built-in defaults. Either way the
+    /// chosen theme and its file are kept. True when anything changed.
     pub fn configure(&self, settings: &Settings) -> bool {
-        let enabled = settings.use_theme && !settings.disabled_themes.contains(&self.active_id());
-        self.enabled.swap(enabled, Ordering::Relaxed) != enabled
+        let listed = !settings.disabled_themes.contains(&self.active_id());
+        let enabled = settings.use_theme && listed;
+        let colors_off = !settings.use_theme && listed;
+        let a = self.enabled.swap(enabled, Ordering::Relaxed) != enabled;
+        let b = self.colors_off.swap(colors_off, Ordering::Relaxed) != colors_off;
+        a || b
     }
 
+    /// The theme is fully on, its colors too: only then can it be edited.
     pub fn enabled(&self) -> bool {
         self.enabled.load(Ordering::Relaxed)
+    }
+
+    /// The theme's look is shown (with or without its colors), so its glow
+    /// shape and particles can be changed from the scene menu.
+    pub fn look_shown(&self) -> bool {
+        self.enabled() || self.colors_off.load(Ordering::Relaxed)
     }
 
     pub fn active_id(&self) -> String {
@@ -134,15 +156,31 @@ impl ThemeService {
 
     /// Shows an edited theme without saving. Returns it clamped, plus warnings.
     pub fn preview(&self, theme: Theme) -> (Theme, Vec<String>) {
-        let (theme, warnings) = theme.sanitized();
+        let (mut theme, warnings) = theme.sanitized();
+        let colors_off = self.colors_off.load(Ordering::Relaxed);
         if let Ok(mut a) = self.active.lock() {
+            // Colors hidden: keep the theme's own (the edited copy carries the
+            // stand-in album colors), and show the edit without them.
+            if colors_off {
+                theme.colors = a.1.colors.clone();
+            }
             a.1 = theme.clone();
+        }
+        if colors_off {
+            theme.colors = themes::Colors::default();
         }
         (theme, warnings.iter().map(|w| w.to_string()).collect())
     }
 
     pub fn save(&self, theme: Theme) -> Result<String, String> {
-        let (theme, _) = theme.sanitized();
+        let (mut theme, _) = theme.sanitized();
+        // With the colors hidden, the theme handed in carries the stand-in
+        // album colors: keep the file's own.
+        if self.colors_off.load(Ordering::Relaxed)
+            && let Ok(a) = self.active.lock()
+        {
+            theme.colors = a.1.colors.clone();
+        }
         let id = self.store.save(&theme).map_err(|e| e.to_string())?;
         if let Ok(mut a) = self.active.lock() {
             *a = (id.clone(), theme);
@@ -169,6 +207,16 @@ impl ThemeService {
     /// Reuse ThemeStore's sanitized save/export path while preserving the catalog id.
     /// Publishing with a hard link refuses to overwrite an existing user theme.
     pub fn install_pack(&self, id: &str, theme: &Theme) -> Result<(), String> {
+        self.write_pack(id, theme, false)
+    }
+
+    /// Like `install_pack`, but replaces an installed copy (in one step: the
+    /// old file stays if writing the new one fails).
+    pub fn replace_pack(&self, id: &str, theme: &Theme) -> Result<(), String> {
+        self.write_pack(id, theme, true)
+    }
+
+    fn write_pack(&self, id: &str, theme: &Theme, replace: bool) -> Result<(), String> {
         if !crate::store::valid_id(id) || themes::bundled().iter().any(|(key, _)| *key == id) {
             return Err("This theme id is reserved or invalid.".into());
         }
@@ -184,8 +232,15 @@ impl ThemeService {
             let saved = store.save(theme).map_err(|e| e.to_string())?;
             let source = staging.join("pack.tmp");
             store.export(&saved, &source).map_err(|e| e.to_string())?;
-            std::fs::hard_link(source, self.user_dir.join(format!("{id}.toml")))
-                .map_err(|e| format!("Could not install theme (an existing theme is kept): {e}"))
+            let target = self.user_dir.join(format!("{id}.toml"));
+            if replace {
+                std::fs::rename(source, target)
+                    .map_err(|e| format!("Could not reinstall theme (yours is kept): {e}"))
+            } else {
+                std::fs::hard_link(source, target).map_err(|e| {
+                    format!("Could not install theme (an existing theme is kept): {e}")
+                })
+            }
         })();
         if let Err(e) = std::fs::remove_dir_all(&staging) {
             tracing::warn!(%e, "could not remove Crate staging directory");
@@ -296,12 +351,21 @@ mod tests {
             use_theme: false,
             ..Default::default()
         };
+        // "Use a theme" off: the theme's look stays, its colors follow the album.
+        let mut uncolored = custom.clone();
+        uncolored.colors = themes::Colors::default();
         assert!(service.configure(&settings));
-        assert_eq!(service.current(), Theme::default());
+        assert_eq!(service.current(), uncolored);
+        assert!(!service.enabled() && service.look_shown());
         assert_eq!(service.active_id(), id);
         assert!(path.exists());
         service.reload_if_active(&id).unwrap();
-        assert_eq!(service.current(), Theme::default());
+        assert_eq!(service.current(), uncolored);
+        // Changing the glow shape then keeps the file's own colors.
+        let mut shaped = service.current();
+        shaped.glow.particles = themes::ParticleStyle::Snow;
+        service.save(shaped).unwrap();
+        custom.glow.particles = themes::ParticleStyle::Snow;
         settings.use_theme = true;
         assert!(service.configure(&settings));
         assert_eq!(service.current(), custom);

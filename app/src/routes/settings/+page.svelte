@@ -85,6 +85,10 @@
     { id: "depth", name: "Depth" },
     { id: "rain", name: "Rain" },
     { id: "orbit", name: "Orbit" },
+    { id: "shards", name: "Shards" },
+    { id: "code", name: "Code" },
+    { id: "melt", name: "Melt" },
+    { id: "tags", name: "Tags" },
   ];
 
   let s = $state<Settings | null>(null);
@@ -321,10 +325,10 @@
             <div class="row">
               <div>
                 <h3>Desktop look</h3>
-                <p class="hint">How the floating lyrics look. Theme follows the active theme; Stars and Rain are the scene's looks.</p>
+                <p class="hint">How the floating lyrics look. Theme follows the active theme; the others are the scene's looks.</p>
               </div>
               <div class="chips" role="radiogroup" aria-label="Desktop lyrics look">
-                {#each [{ id: "theme", name: "Theme" }, { id: "stars", name: "Stars" }, { id: "rain", name: "Rain" }] as st}
+                {#each [{ id: "theme", name: "Theme" }, { id: "stars", name: "Stars" }, { id: "rain", name: "Rain" }, { id: "shards", name: "Shards" }, { id: "code", name: "Code" }, { id: "melt", name: "Melt" }] as st}
                   <button
                     role="radio"
                     aria-checked={s.desktopLyricsStyle === st.id}
@@ -596,7 +600,7 @@
             <h3>Look</h3>
             <p class="hint">The button in the player's top-left corner switches looks too.</p>
             <div class="chips" role="radiogroup" aria-label="Player look">
-              {#each [{ id: "glass", name: "Glass" }, { id: "disc", name: "Disc" }, { id: "card", name: "Card" }, { id: "pill", name: "Pill" }, { id: "lyric", name: "Lyric" }] as st}
+              {#each [{ id: "glass", name: "Glass" }, { id: "disc", name: "Disc" }, { id: "card", name: "Card" }, { id: "pill", name: "Pill" }, { id: "lyric", name: "Lyric" }, { id: "clear", name: "Clear" }] as st}
                 <button
                   role="radio"
                   aria-checked={s.playerStyle === st.id}
@@ -768,7 +772,7 @@
     background:
       radial-gradient(120% 80% at 100% 0%, color-mix(in oklab, var(--c1) 16%, transparent), transparent 60%),
       var(--tint);
-    border-radius: var(--radius);
+    border-radius: 0; /* the window has its own corners */
     overflow: hidden;
   }
 
@@ -802,7 +806,7 @@
     height: 34px;
     padding: 0 10px;
     margin-bottom: 12px;
-    border-radius: 10px;
+    border-radius: calc(var(--radius) * 0.7);
     background: rgba(255, 255, 255, 0.06);
     border: 1px solid var(--hairline);
   }
@@ -849,7 +853,7 @@
     height: 34px;
     padding: 0 10px;
     border: 0;
-    border-radius: 9px;
+    border-radius: calc(var(--radius) * 0.65);
     background: transparent;
     font-size: 13.5px;
     color: var(--ink-soft);
@@ -937,7 +941,7 @@
     margin: 0;
     padding: 16px 18px;
     border: 1px solid var(--hairline);
-    border-radius: 14px;
+    border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.04);
     display: grid;
     gap: 10px;
@@ -1206,7 +1210,7 @@
     height: 30px;
     padding: 0 14px;
     border: 1px solid var(--hairline);
-    border-radius: 9px;
+    border-radius: calc(var(--radius) * 0.65);
     background: rgba(255, 255, 255, 0.06);
     font-size: 13px;
     cursor: pointer;
@@ -1295,7 +1299,7 @@
   .stepper button {
     padding: 5px 12px;
     border: 1px solid var(--hairline);
-    border-radius: 8px;
+    border-radius: calc(var(--radius) * 0.6);
     background: rgba(255, 255, 255, 0.06);
     cursor: pointer;
     font-size: 13px;

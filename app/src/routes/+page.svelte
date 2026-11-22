@@ -20,8 +20,10 @@
   //   card   a tall card: big cover, title, progress, controls
   //   pill   a slim capsule: spinning cover, title, play and next
   //   lyric  the line being sung, big, beside a small cover
-  type Style = "glass" | "disc" | "card" | "pill" | "lyric";
-  const STYLES: Style[] = ["glass", "disc", "card", "pill", "lyric"];
+  //   clear  no window at all: the cover, the song and the controls float
+  //          on the desktop
+  type Style = "glass" | "disc" | "card" | "pill" | "lyric" | "clear";
+  const STYLES: Style[] = ["glass", "disc", "card", "pill", "lyric", "clear"];
   let style = $state<Style>("glass");
   const lyr = new LyricsFollower();
   // Volume: the speaker button opens a slider; the wheel works anywhere.
@@ -228,6 +230,18 @@
       </div>
       <div class="row">{@render transport(false)}</div>
       <div class="pill-line" aria-hidden="true"><i style:transform={`scaleX(${progress})`}></i></div>
+    {:else if style === "clear"}
+      <div class="clear-art" data-tauri-drag-region>
+        {#key art}
+          {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
+        {/key}
+      </div>
+      <div class="clear-meta" data-tauri-drag-region>
+        <p class="title" title={track.title} data-tauri-drag-region>{track.title}</p>
+        <p class="artist" data-tauri-drag-region>{track.artist || track.source}</p>
+        <div class="row clear-controls">{@render transport(false)}</div>
+        <div class="clear-line" aria-hidden="true"><i style:transform={`scaleX(${progress})`}></i></div>
+      </div>
     {:else}
       <div class="lyric-art" data-tauri-drag-region>
         {#if art}<img src={art} alt="" draggable="false" data-tauri-drag-region />{:else}<div class="art-empty"></div>{/if}
@@ -367,7 +381,7 @@
     gap: 18px;
     padding: 18px 20px 18px 18px;
     background: var(--tint);
-    border-radius: var(--radius);
+    border-radius: 0; /* glass looks: the window has its own corners */
     overflow: hidden;
     isolation: isolate;
   }
@@ -394,7 +408,7 @@
     position: relative;
     width: 96px;
     height: 96px;
-    border-radius: 10px;
+    border-radius: calc(var(--radius) * 0.7);
     overflow: hidden;
     box-shadow:
       0 0 0 1px var(--hairline),
@@ -984,6 +998,81 @@
     right: 26px;
     bottom: 5px;
     height: 2px;
+  }
+
+  /* ── Clear: no window, the song floats on the desktop ── */
+  /* The colour fringe (red left, blue right) keeps it readable on any
+     wallpaper, like a print slightly out of register. */
+  .s-clear {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    padding: 12px 44px 12px 14px;
+    background: transparent;
+    --fringe: -1.5px 0 rgba(255, 46, 90, 0.75), 1.5px 0 rgba(46, 140, 255, 0.75), 0 2px 14px rgba(0, 0, 0, 0.65);
+  }
+  .clear-art {
+    position: relative;
+    flex: none;
+    width: 92px;
+    height: 92px;
+  }
+  .clear-art img,
+  .clear-art .art-empty {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    box-shadow: -3px 0 0 rgba(255, 46, 90, 0.6), 3px 0 0 rgba(46, 140, 255, 0.6), 0 12px 30px -8px rgba(0, 0, 0, 0.7);
+  }
+  .clear-meta {
+    flex: 1;
+    min-width: 0;
+  }
+  .s-clear .title {
+    font-size: 22px;
+    line-height: 28px;
+    font-weight: 700;
+    color: #fff;
+    text-shadow: var(--fringe);
+  }
+  .s-clear .artist {
+    font-size: 14px;
+    color: rgba(255, 255, 255, 0.85);
+    text-shadow: var(--fringe);
+  }
+  .clear-controls {
+    justify-content: flex-start;
+    margin: 4px 0 0 -7px;
+    color: #fff;
+    opacity: 0.6;
+    filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.8));
+    transition: opacity 150ms ease;
+  }
+  .player:hover .clear-controls,
+  .clear-controls:focus-within {
+    opacity: 1;
+  }
+  .clear-line {
+    height: 2px;
+    margin-top: 6px;
+    width: 70%;
+    background: rgba(255, 255, 255, 0.18);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .clear-line i {
+    display: block;
+    height: 100%;
+    background: #fff;
+    transform-origin: left;
+  }
+  .s-clear .alt-empty .title {
+    color: #fff;
+    text-shadow: var(--fringe);
+  }
+  .s-clear .vol:not(.open) {
+    opacity: 0.6;
   }
 
   /* ── Lyric: the sung line, big ────────────────────── */

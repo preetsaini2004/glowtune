@@ -149,6 +149,10 @@
     { id: "depth", name: "Depth" },
     { id: "rain", name: "Rain" },
     { id: "orbit", name: "Orbit" },
+    { id: "shards", name: "Shards" },
+    { id: "code", name: "Code" },
+    { id: "melt", name: "Melt" },
+    { id: "tags", name: "Tags" },
   ];
   // The glow's shape and particles live in the active theme: the menu reads
   // it, changes one field and saves it (finer controls stay in Settings).
@@ -222,6 +226,9 @@
     { id: "water", name: "Water" },
     { id: "frost", name: "Frost" },
     { id: "halftone", name: "Halftone" },
+    { id: "mosaic", name: "Mosaic" },
+    { id: "silk", name: "Silk" },
+    { id: "dots", name: "Dots" },
   ];
   const EXTRA = ["#ffb13d", "#3dffa8", "#a63dff"];
 
@@ -392,7 +399,7 @@
           <span>Moving background</span>
           {@render sw("stageMotion", "Moving background")}
         </label>
-        {#if ["water", "frost", "halftone"].includes(settings.stageWallpaper)}
+        {#if ["water", "frost", "halftone", "mosaic", "dots"].includes(settings.stageWallpaper)}
           <label class="line">
             <span>Pulse to the beat</span>
             {@render sw("stageBeat", "Pulse to the beat")}

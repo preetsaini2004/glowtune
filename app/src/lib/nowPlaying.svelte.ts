@@ -57,13 +57,32 @@ class NowPlaying {
     return p.length ? p : DEFAULT_PALETTE;
   }
 
+  /** When the last position report arrived (local ms). */
+  #heardAt = 0;
+
+  /** A new song starts at 0:00. A web player can take seconds to report the
+   *  new position, and until then the old song's position (near its end) ran
+   *  on, so the bar stayed full. A report that came in just now is kept: it
+   *  may already be the new song's. */
+  setTrack(next: Track | null) {
+    const key = (t: Track | null) => (t ? `${t.title}\n${t.artist}\n${t.source}` : "");
+    const changed = key(next) !== key(this.track);
+    this.track = next;
+    if (changed && next && Date.now() - this.#heardAt > 1500) {
+      this.playback = { ...this.playback, positionMs: 0, reportedAtMs: Date.now() };
+    }
+  }
+
   /** Interpolated position right now, in ms. */
   positionAt(now = Date.now()): number {
     const p = this.playback;
     let pos = p.positionMs;
     if (p.status === "playing") pos += Math.max(0, now - p.reportedAtMs) * (p.rate || 1);
+    // Hold at the end while the player wraps up the song, but a position well
+    // past the length means the length is wrong (another song's): don't
+    // freeze the lyrics on it.
     const d = this.track?.durationMs;
-    return d ? Math.min(pos, d) : pos;
+    return d && pos <= d + 3000 ? Math.min(pos, d) : pos;
   }
 
   async start() {
@@ -76,8 +95,11 @@ class NowPlaying {
     };
     await listen<Colors>("settings", (e) => colors(e.payload));
     invoke<Colors>("get_settings").then(colors).catch(() => {});
-    await listen<Track | null>("np-track", (e) => (this.track = e.payload));
-    await listen<Playback>("np-playback", (e) => (this.playback = e.payload));
+    await listen<Track | null>("np-track", (e) => this.setTrack(e.payload));
+    await listen<Playback>("np-playback", (e) => {
+      this.#heardAt = Date.now();
+      this.playback = e.payload;
+    });
     const snap = await invoke<Snapshot>("get_state");
     this.track = snap.track;
     this.playback = snap.playback;

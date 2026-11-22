@@ -27,6 +27,8 @@ pub struct Settings {
     pub clean_lyrics: bool,
     /// Where you dragged the desktop lyrics (physical px, top-left); None = theme position.
     pub lyrics_position: Option<[i32; 2]>,
+    /// Size you gave the desktop lyrics box (logical px); None = the default.
+    pub lyrics_box: Option<[f64; 2]>,
     /// Hide the glow on a screen while a fullscreen app or game is in front.
     pub glow_hide_fullscreen: bool,
     /// Block ads and trackers inside the service windows (Spotify, YouTube Music...).
@@ -58,7 +60,7 @@ pub struct Settings {
     pub stage_motion: bool,
     /// Sung words with a clear emoji burst into a fan of it.
     pub stage_emoji: bool,
-    /// Water / Frost / Halftone wallpapers answer the kick drum.
+    /// Water / Frost / Halftone / Mosaic / Dots wallpapers answer the kick drum.
     pub stage_beat: bool,
     /// Lyrics look in the scene: bold, flow, karaoke, outline, sticker.
     pub stage_lyrics_style: String,
@@ -117,6 +119,7 @@ impl Default for Settings {
             desktop_lyrics_style: "theme".to_string(),
             clean_lyrics: false,
             lyrics_position: None,
+            lyrics_box: None,
             glow_hide_fullscreen: true,
             block_ads: true,
             player_on_top: false,
@@ -182,6 +185,10 @@ impl Settings {
                 | "depth"
                 | "rain"
                 | "orbit"
+                | "shards"
+                | "code"
+                | "melt"
+                | "tags"
         ) {
             self.stage_lyrics_style = "bold".to_string();
         }
@@ -193,7 +200,7 @@ impl Settings {
         }
         if !matches!(
             self.desktop_lyrics_style.as_str(),
-            "theme" | "stars" | "rain"
+            "theme" | "stars" | "rain" | "shards" | "code" | "melt"
         ) {
             self.desktop_lyrics_style = "theme".to_string();
         }
@@ -205,7 +212,7 @@ impl Settings {
         }
         if !matches!(
             self.player_style.as_str(),
-            "glass" | "disc" | "card" | "pill" | "lyric"
+            "glass" | "disc" | "card" | "pill" | "lyric" | "clear"
         ) {
             self.player_style = "glass".to_string();
         }
@@ -223,7 +230,7 @@ impl Settings {
         }
         if !matches!(
             self.stage_wallpaper.as_str(),
-            "art" | "video" | "silk" | "water" | "frost" | "mosaic" | "halftone" | "cover"
+            "art" | "video" | "silk" | "water" | "frost" | "mosaic" | "halftone" | "cover" | "dots"
         ) {
             self.stage_wallpaper = "art".to_string();
         }

@@ -12,7 +12,7 @@ shows synced lyrics, and turns your desktop into a live music scene.
 
 <sub>▶ Watch the 0.2 launch film (75 s): <a href="../../releases/latest">glowtune-0.2-hero.mp4</a> on the latest release.</sub>
 
-[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-02) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
+[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-03) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
 
 </div>
 
@@ -22,9 +22,42 @@ shows synced lyrics, and turns your desktop into a live music scene.
 
 ---
 
+## What's new in 0.3
+
+Four new lyric styles, new wallpapers, a see-through player, a refreshed Store, and the fixes you asked for.
+
+### 🔠 Four new lyric styles
+- **Shards:** every letter flies in as broken slivers and snaps together just as it's sung. The finished line shrinks away, leaving ghost copies.
+- **Tags:** the line hangs on swinging white tags, and each letter rolls like a counter onto its word. At the end, the letters peel off.
+- **Code:** the line waits as a row of glowing dots, one per letter, and each dot turns into its letter as it's sung. Corner brackets close in at the end.
+- **Melt:** letters are brushed in with a streak of colour. At the end, they run down the screen like wet paint.
+
+Shards, Code and Melt show the next line waiting underneath, and they also work as floating desktop lyrics.
+
+### 🌊 Wallpapers
+- **Dots** is new: a field of glowing dots in the song's colours. Every kick drum sends a wave rolling out from a random spot, and the surface goes calm in the quiet parts.
+- **Silk** is now sheer and takes the song's colours, so the album cover shows through.
+- **Mosaic** and **Silk** are now in the wallpaper menu.
+
+### 🪟 Clear player
+A new mini player look with no window at all: the cover, the song and the controls float right on your desktop.
+
+### 🎁 A refreshed Store
+29 themes and scene looks, 15 of them new, using the 0.2 glow shapes, particles, wallpapers and lyric styles. **Surprise me** puts on a random look, and **Reinstall** brings an installed theme up to date.
+
+### 🛠️ Fixes and small things
+- **Up next** shows the player's queue again.
+- After a song change, the progress bar no longer stays full and the lyrics no longer freeze.
+- You can **drag the seek bar** on the desktop scene.
+- Your own theme stays selected after a restart.
+- Turning off **Use the theme's colors** keeps the theme's glow, fonts and lyrics, and only lets the colours follow the album art.
+- Lyric size now works for every floating-lyrics look.
+- Drag a corner to **resize the floating lyrics box**.
+- The album **Glow** look no longer washes out the song's name.
+
 ## What's new in 0.2
 
-A whole week of new looks and new ways to play. Here's everything in this update.
+A whole week of new looks and new ways to play. Here's everything in that update.
 
 ### ✨ Stars lyrics
 Every word becomes a star, and a thread of light draws to it as it's sung, until the line forms its own little constellation. It sits alongside eight other styles, including the new Depth, Rain and Orbit, and words like *money* or *heart* burst into emoji.
@@ -253,6 +286,7 @@ Glowtune stands on the shoulders of people who made music on a screen feel alive
 - **[Lyricscape](https://github.com/NIKSHITH-G/lyricscape)**: a playground of lyric styles that pushed us to try Rain, Orbit and Depth.
 - **[musikariV2](https://github.com/Hoshi-hikarin2208/musikariV2)**: dreamy backgrounds and particles that inspired our glow particles.
 - **[lyrcing](https://github.com/yuvraj0011/lyrcing)**: the fun of emoji bursting out of the lyrics.
+- **[JIZURA](https://github.com/852wa/JIZURA)**: its lyric-video motion inspired our **Shards**, **Code**, **Melt** and **Tags** styles.
 - **Spotify's full-screen lyrics view**, which set the bar for how lyrics should feel.
 
 And the open-source work Glowtune is built on: [Tauri](https://tauri.app), [Svelte](https://svelte.dev), [wgpu](https://wgpu.rs), [LRCLIB](https://lrclib.net) for lyrics, the [iTunes Search API](https://performance-partners.apple.com/search-api) for artwork, Brave's [adblock-rust](https://github.com/brave/adblock-rust), [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) for smooth tempo changes in Automix, and [Remotion](https://www.remotion.dev) for the videos.

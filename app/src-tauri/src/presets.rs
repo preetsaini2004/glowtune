@@ -204,6 +204,49 @@ pub async fn apply_scene_preset(name: String, app: AppHandle) -> Result<(), Stri
     apply(&app, index)
 }
 
+/// Sets the edge glow's shape and particles (e.g. "aurora", "snow"), saved
+/// into the current theme only when they change. Unknown names are ignored.
+/// Used by presets and by the Crate's scene looks.
+pub fn set_glow(app: &AppHandle, effect: Option<&str>, particles: Option<&str>) {
+    let themes = app.state::<std::sync::Arc<crate::ThemeService>>();
+    if !themes.look_shown() {
+        return;
+    }
+    let mut theme = themes.current();
+    let mut changed = false;
+    if let Some(effect) = effect.and_then(glow_effect)
+        && theme.glow.effect != effect
+    {
+        theme.glow.effect = effect;
+        changed = true;
+    }
+    if let Some(particles) = particles.and_then(glow_particles)
+        && theme.glow.particles != particles
+    {
+        theme.glow.particles = particles;
+        changed = true;
+    }
+    if changed {
+        match themes.save(theme) {
+            Ok(id) => {
+                crate::apply_theme(app, &themes.current());
+                crate::update_settings(app, |s| s.active_theme = id);
+            }
+            Err(e) => tracing::warn!("glow not saved: {e}"),
+        }
+    } else {
+        crate::apply_theme(app, &themes.current());
+    }
+}
+
+pub fn glow_effect(name: &str) -> Option<themes::GlowEffect> {
+    serde_json::from_value(serde_json::Value::String(name.into())).ok()
+}
+
+pub fn glow_particles(name: &str) -> Option<themes::ParticleStyle> {
+    serde_json::from_value(serde_json::Value::String(name.into())).ok()
+}
+
 /// Brings preset `index` (0-based) back. Used by the menu and the hotkeys.
 pub fn apply(app: &AppHandle, index: usize) -> Result<(), String> {
     let mut s = crate::current_settings(app);
@@ -226,41 +269,11 @@ pub fn apply(app: &AppHandle, index: usize) -> Result<(), String> {
     crate::save_settings(s, app)?;
 
     // Then the glow, saved into the theme only when it actually changes.
-    if themes.enabled() {
-        let mut theme = themes.current();
-        let mut changed = false;
-        if let Some(effect) = preset
-            .look
-            .glow_effect
-            .as_deref()
-            .and_then(|e| serde_json::from_value(serde_json::Value::String(e.into())).ok())
-            && theme.glow.effect != effect
-        {
-            theme.glow.effect = effect;
-            changed = true;
-        }
-        if let Some(particles) = preset
-            .look
-            .glow_particles
-            .as_deref()
-            .and_then(|p| serde_json::from_value(serde_json::Value::String(p.into())).ok())
-            && theme.glow.particles != particles
-        {
-            theme.glow.particles = particles;
-            changed = true;
-        }
-        if changed {
-            match themes.save(theme) {
-                Ok(id) => {
-                    crate::apply_theme(app, &themes.current());
-                    crate::update_settings(app, |s| s.active_theme = id);
-                }
-                Err(e) => tracing::warn!("preset {}: glow not saved: {e}", preset.name),
-            }
-        } else {
-            crate::apply_theme(app, &themes.current());
-        }
-    }
+    set_glow(
+        app,
+        preset.look.glow_effect.as_deref(),
+        preset.look.glow_particles.as_deref(),
+    );
 
     let _ = app.emit("scene-preset", &preset);
     tracing::info!("scene preset applied: {}", preset.name);

@@ -488,6 +488,9 @@ const FULLSCREEN_RECHECK: Duration = Duration::from_millis(500);
 /// push a topmost window under ordinary ones (it keeps the flag but sinks in
 /// the stack), and then the glow is only seen through the taskbar.
 const RAISE_EVERY: Duration = Duration::from_secs(2);
+/// See `crate::keep_below`: 0 = none.
+pub(crate) static KEEP_BELOW: std::sync::atomic::AtomicIsize =
+    std::sync::atomic::AtomicIsize::new(0);
 
 /// After this long without light, the GPU device is released entirely (the
 /// next play recreates it behind the fade-in). `GLOWTUNE_DEEP_SLEEP_SECS` overrides.
@@ -960,15 +963,25 @@ impl ApplicationHandler<Cmd> for App {
 
 /// Back to the top of the always-on-top windows, without activating.
 fn keep_on_top(window: &Window) {
+    use windows::Win32::Foundation::HWND;
     use windows::Win32::UI::WindowsAndMessaging::{
-        HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SetWindowPos,
+        HWND_TOPMOST, IsWindowVisible, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+        SetWindowPos,
     };
     let Some(hwnd) = hwnd_of(window) else { return };
+    let below = KEEP_BELOW.load(std::sync::atomic::Ordering::Relaxed);
+    // SAFETY: reads the visibility of a window handle the app gave us (a gone
+    // handle just reads as not visible).
+    let after = if below != 0 && unsafe { IsWindowVisible(HWND(below as *mut _)) }.as_bool() {
+        HWND(below as *mut _)
+    } else {
+        HWND_TOPMOST
+    };
     // SAFETY: z-order change on our own strip window.
     unsafe {
         let _ = SetWindowPos(
             hwnd,
-            Some(HWND_TOPMOST),
+            Some(after),
             0,
             0,
             0,

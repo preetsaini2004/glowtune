@@ -17,6 +17,21 @@
   //            earlier lines stack up above, dimmer
   //   orbit    the line is a ring of words around a glowing orb; the ring
   //            turns so the sung word always faces you
+  //   shards   every letter arrives broken into three sharp slivers that
+  //            fly in from all sides, twisted, with split colour edges, and
+  //            snap together just as its word is sung; the finished line
+  //            then shrinks away, leaving a trail of ghost copies. (Idea
+  //            from JIZURA, MIT: github.com/852wa/JIZURA.)
+  //   code     the whole line waits as a row of glowing dots, one per
+  //            letter; each dot turns into its letter as it's sung; held
+  //            words leave an echo; at the end corner brackets close in
+  //   melt     each letter is brushed in with a streak of colour as it's
+  //            sung; the line flickers like a failing light, then runs
+  //            down the screen in coloured streaks, letter by letter
+  //   tags     the line hangs on a string of white tags that swing; each
+  //            letter rolls through symbols like a counter and lands on
+  //            its word as it's sung; at the end the letters peel away
+  // Shards, Code and Melt show the next line waiting underneath.
   //
   // Word timing: LRCLIB gives one time per line, so a line's time is spread
   // over its words by length. Reads like word sync; it's an estimate.
@@ -29,7 +44,20 @@
   import { emojiFor } from "./emoji";
   import EmojiBurst from "./EmojiBurst.svelte";
 
-  type Style = "flow" | "bold" | "karaoke" | "outline" | "sticker" | "stars" | "depth" | "rain" | "orbit";
+  type Style =
+    | "flow"
+    | "bold"
+    | "karaoke"
+    | "outline"
+    | "sticker"
+    | "stars"
+    | "depth"
+    | "rain"
+    | "orbit"
+    | "shards"
+    | "code"
+    | "melt"
+    | "tags";
   let {
     lyr,
     style,
@@ -37,7 +65,17 @@
     playing = true,
     light = false,
     emoji: emojiOn = false,
-  }: { lyr: LyricsFollower; style: Style; rate?: number; playing?: boolean; light?: boolean; emoji?: boolean } = $props();
+    scale = 1,
+  }: {
+    lyr: LyricsFollower;
+    style: Style;
+    rate?: number;
+    playing?: boolean;
+    light?: boolean;
+    emoji?: boolean;
+    /** Text size multiplier (desktop lyrics: the theme's lyrics size). */
+    scale?: number;
+  } = $props();
 
   const lines = $derived(lyr.lyrics.lines);
   const index = $derived(lyr.index);
@@ -240,6 +278,90 @@
   });
   const fadeBack = (_: Element) => ({ duration: 500, css: (t: number) => `opacity:${t * 0.1}` });
 
+  // ── Shards ─────────────────────────────────────────────────────────────
+  // Letters, not code points: a Devanagari or Gurmukhi conjunct (क्ष) or an
+  // emoji stays one piece.
+  const graphemes = (() => {
+    try {
+      const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+      return (s: string) => [...seg.segment(s)].map((g) => g.segment);
+    } catch {
+      return (s: string) => [...s];
+    }
+  })();
+  /** One sliver of a letter: where it flies in from. */
+  type Sliver = { x: number; y: number; r: number; s: number };
+  type Glyph = { ch: string; at: number; slivers: Sliver[] };
+  type ShardWord = Word & { glyphs: Glyph[] };
+  /**
+   * A line's words, each split into letters that land one after another
+   * across the word's first part. The flight paths come from the line number,
+   * so a line always breaks the same way.
+   */
+  function shardWords(line: Line, i: number, durMs: number, elapsedMs: number): ShardWord[] {
+    const rnd = seeded(i * 4241 + 7);
+    const r = (span: number) => (rnd() - 0.5) * 2 * span;
+    return words(line, durMs, elapsedMs).map((w) => {
+      const chs = graphemes(w.text);
+      const step = Math.min(55, (Math.min(w.dur, 900) * 0.6) / Math.max(1, chs.length));
+      return {
+        ...w,
+        glyphs: chs.map((ch, k) => ({
+          ch,
+          at: w.delay + k * step,
+          slivers: [0, 1, 2].map(() => ({ x: r(2.2), y: r(1.6), r: r(150), s: 0.6 + rnd() * 1.1 })),
+        })),
+      };
+    });
+  }
+  // ── Code / Melt / Tags ────────────────────────────────────────────────
+  // These end through a registered CSS number (--close / --fall / --peel)
+  // that the outro animates on the line; each letter reads it.
+  const bracketsClose = (_: Element) => ({
+    duration: 560,
+    easing: cubicOut,
+    css: (t: number, u: number) => `--close:${u}; opacity:${t}`,
+  });
+  const meltDown = (_: Element) => ({
+    duration: 1000,
+    css: (t: number, u: number) => `--fall:${u}; opacity:${Math.min(1, t * 2.2)}`,
+  });
+  const peelOff = (_: Element) => ({
+    duration: 760,
+    easing: cubicOut,
+    css: (t: number, u: number) => `--peel:${u}; opacity:${Math.min(1, t * 2.5)}`,
+  });
+  /** Tags: the line's words on tags of about a dozen letters each. */
+  function tagRows(ws: ShardWord[]): ShardWord[][] {
+    const rows: ShardWord[][] = [];
+    let row: ShardWord[] = [];
+    let len = 0;
+    for (const w of ws) {
+      if (row.length && len + w.glyphs.length > 11) {
+        rows.push(row);
+        row = [];
+        len = 0;
+      }
+      row.push(w);
+      len += w.glyphs.length + 1;
+    }
+    if (row.length) rows.push(row);
+    return rows;
+  }
+  const ROLL = ["#", "%", "&", "@", "*", "+", "=", "?", "§", "◆", "●", "▲", "✦", "0", "7", "X"];
+  function rollOf(i: number, k: number): string[] {
+    const rnd = seeded(i * 977 + k * 31 + 3);
+    return [0, 1, 2].map(() => ROLL[Math.floor(rnd() * ROLL.length)]);
+  }
+
+  /** The finished line shrinks toward the middle, leaving ghost copies. */
+  const recede = (_: Element) => ({
+    duration: 620,
+    easing: cubicOut,
+    css: (t: number, u: number) =>
+      `opacity:${t}; transform: scale(${1 - u * 0.28}); text-shadow: ${u * 0.35}em ${u * 0.12}em 0 color-mix(in oklab, var(--c1) ${Math.round(t * 50)}%, transparent), ${-u * 0.35}em ${-u * 0.12}em 0 color-mix(in oklab, var(--c2) ${Math.round(t * 40)}%, transparent)`,
+  });
+
   // ── Rain ───────────────────────────────────────────────────────────────
   /** The last two lines above the sung one (they stack and dim). */
   const rainLines = $derived.by(() => {
@@ -314,6 +436,10 @@
   }
 </script>
 
+{#snippet upNext()}
+  {#if lyr.next && lyr.next.text}<p class="nx">{showLyric(lyr.next.text, np.cleanLyrics)}</p>{/if}
+{/snippet}
+
 {#if style === "flow"}
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="flow" class:paused={!playing} class:light class:browsing onwheel={wheel}>
@@ -355,7 +481,7 @@
     </div>
   </div>
 {:else if style === "stars"}
-  <div class="stars" class:paused={!playing} class:light bind:clientWidth={skyW} bind:clientHeight={skyH}>
+  <div class="stars" class:paused={!playing} class:light style:--ls={scale} bind:clientWidth={skyW} bind:clientHeight={skyH}>
     {#key index}
       <div class="sky" in:form out:drift>
         {#if lyr.current && lyr.current.text !== ""}
@@ -428,7 +554,7 @@
     {/if}
   </div>
 {:else if style === "rain"}
-  <div class="rain" class:paused={!playing} class:light>
+  <div class="rain" class:paused={!playing} class:light style:--ls={scale}>
     {#each rainLines as i (i)}
       <p class="rl" class:now={i === index} animate:flip={{ duration: 560, easing: cubicOut }} in:fade={{ duration: 200 }} out:fly={{ y: -30, duration: 420 }}>
         {#if i === index}
@@ -445,6 +571,90 @@
     {#if !lyr.current || lyr.current.text === ""}
       <p class="rl now gap"><span class="dots"><span></span><span></span><span></span></span></p>
     {/if}
+  </div>
+{:else if style === "shards"}
+  <div class="shards" class:paused={!playing} class:light style:--ls={scale}>
+    {#key index}
+      <div class="sh-line" out:recede>
+        {#if lyr.current && lyr.current.text !== ""}
+          {#key lyr.plan}
+            <p class="sh">
+              {#each shardWords(lyr.current, index, lineMs, elapsed) as w}
+                <span class="wb"><span class="shw" class:hold={w.hold} style:--d={`${w.delay}ms`} style:--t={`${w.dur}ms`}>{#each w.glyphs as g}<span class="gx"><span class="gh">{g.ch}</span>{#each g.slivers as s, n}<i class="sl s{n}" style:--x={`${s.x}em`} style:--y={`${s.y}em`} style:--r={`${s.r}deg`} style:--s={s.s} style:--a={`${g.at}ms`}>{g.ch}</i>{/each}</span>{/each}</span>{#if w.emoji}<EmojiBurst emoji={w.emoji} delay={w.delay} seed={index * 31 + w.text.length} />{/if}</span>{" "}
+              {/each}
+            </p>
+          {/key}
+        {:else}
+          <p class="sh"><span class="dots"><span></span><span></span><span></span></span></p>
+        {/if}
+        {@render upNext()}
+      </div>
+    {/key}
+  </div>
+{:else if style === "code"}
+  <div class="code" class:paused={!playing} class:light style:--ls={scale}>
+    {#key index}
+      <div class="x-line" out:bracketsClose>
+        {#if lyr.current && lyr.current.text !== ""}
+          <div class="cd-box">
+            <i class="br b-tl"></i><i class="br b-tr"></i><i class="br b-bl"></i><i class="br b-br"></i>
+            {#key lyr.plan}
+              <p class="cd">
+                {#each shardWords(lyr.current, index, lineMs, elapsed) as w, wi}
+                  <span class="wb"><span class="cw" class:hold={w.hold} style:--d={`${w.delay}ms`} style:--t={`${w.dur}ms`}>{#each w.glyphs as g, k}<span class="cg" style:--a={`${g.at}ms`} style:--j={wi * 4 + k}><span class="dot"></span><span class="ch">{g.ch}</span></span>{/each}</span>{#if w.emoji}<EmojiBurst emoji={w.emoji} delay={w.delay} seed={index * 31 + w.text.length} />{/if}</span>{" "}
+                {/each}
+              </p>
+            {/key}
+          </div>
+        {:else}
+          <p class="cd"><span class="dots"><span></span><span></span><span></span></span></p>
+        {/if}
+        {@render upNext()}
+      </div>
+    {/key}
+  </div>
+{:else if style === "melt"}
+  <div class="melt" class:paused={!playing} class:light style:--ls={scale}>
+    {#key index}
+      <div class="x-line" out:meltDown>
+        {#if lyr.current && lyr.current.text !== ""}
+          {#key lyr.plan}
+            <p class="mt">
+              {#each shardWords(lyr.current, index, lineMs, elapsed) as w}
+                <span class="wb"><span class="mw" class:hold={w.hold} style:--d={`${w.delay}ms`} style:--t={`${w.dur}ms`}>{#each w.glyphs as g}<span class="mg" style:--a={`${g.at}ms`} style:--k={g.slivers[0].s - 0.6}>{g.ch}</span>{/each}</span>{#if w.emoji}<EmojiBurst emoji={w.emoji} delay={w.delay} seed={index * 31 + w.text.length} />{/if}</span>{" "}
+              {/each}
+            </p>
+          {/key}
+        {:else}
+          <p class="mt"><span class="dots"><span></span><span></span><span></span></span></p>
+        {/if}
+        {@render upNext()}
+      </div>
+    {/key}
+  </div>
+{:else if style === "tags"}
+  <div class="tags" class:paused={!playing} class:light style:--ls={scale}>
+    {#key index}
+      <div class="x-line" out:peelOff>
+        {#if lyr.current && lyr.current.text !== ""}
+          {#key lyr.plan}
+            {@const rows = tagRows(shardWords(lyr.current, index, lineMs, elapsed))}
+            <div class="tg-stack" style:--tn={rows.length}>
+              <i class="tg-string"></i>
+              {#each rows as row, ri}
+                <div class="tag" style:--i={ri} style:--tilt={`${(ri % 2 ? 1 : -1) * (1.5 + (index % 3))}deg`}>
+                  {#each row as w, wi}
+                    <span class="tw" class:hold={w.hold} style:--d={`${w.delay}ms`} style:--t={`${w.dur}ms`}>{#each w.glyphs as g, k}{@const r = rollOf(index * 40 + ri * 8 + wi, k)}<span class="tgl" style:--a={`${g.at}ms`} style:--j={k}><span class="roll"><b>{r[0]}</b><b>{r[1]}</b><b>{r[2]}</b><b>{g.ch}</b></span></span>{/each}</span>{#if wi < row.length - 1}{" "}{/if}
+                  {/each}
+                </div>
+              {/each}
+            </div>
+          {/key}
+        {:else}
+          <p class="tg-gap"><span class="dots"><span></span><span></span><span></span></span></p>
+        {/if}
+      </div>
+    {/key}
   </div>
 {:else if style === "orbit"}
   <div class="orbit" class:paused={!playing} class:light bind:clientWidth={skyW} bind:clientHeight={skyH}>
@@ -732,9 +942,9 @@
   /* Three sizes per word: still to come (a pinprick with a faint name),
      being sung (big, under a sparkle), sung (a settled star). */
   .stars {
-    --small: clamp(12px, 3.3cqh, 22px);
-    --mid: clamp(13px, 3.9cqh, 26px);
-    --big: clamp(28px, 9.5cqh, 80px);
+    --small: calc(clamp(12px, 3.3cqh, 22px) * var(--ls, 1));
+    --mid: calc(clamp(13px, 3.9cqh, 26px) * var(--ls, 1));
+    --big: calc(clamp(28px, 9.5cqh, 80px) * var(--ls, 1));
     --glow: color-mix(in oklab, var(--c1) 70%, white);
     position: relative;
     width: 100%;
@@ -840,15 +1050,15 @@
   }
   /* A held word rings out a little larger. */
   .star.hold {
-    --big: clamp(34px, 11.5cqh, 96px);
+    --big: calc(clamp(34px, 11.5cqh, 96px) * var(--ls, 1));
   }
   /* The sparkle sits on the star while its word is sung. */
   .spark {
     position: absolute;
     left: 0;
     top: 0;
-    width: clamp(34px, 10cqh, 84px);
-    height: clamp(34px, 10cqh, 84px);
+    width: calc(clamp(34px, 10cqh, 84px) * var(--ls, 1));
+    height: calc(clamp(34px, 10cqh, 84px) * var(--ls, 1));
     translate: -50% -50%;
     fill: var(--glow);
     filter: drop-shadow(0 0 8px var(--glow));
@@ -877,7 +1087,7 @@
   .spark.emo {
     display: grid;
     place-items: center;
-    font-size: clamp(26px, 8cqh, 64px);
+    font-size: calc(clamp(26px, 8cqh, 64px) * var(--ls, 1));
     line-height: 1;
     font-style: normal;
     filter: drop-shadow(0 0 10px color-mix(in oklab, var(--glow) 60%, transparent));
@@ -886,7 +1096,7 @@
     position: absolute;
     left: 0;
     top: 0;
-    font-size: clamp(24px, 7cqh, 56px);
+    font-size: calc(clamp(24px, 7cqh, 56px) * var(--ls, 1));
   }
   /* Instrumental gaps: a few stars breathing. */
   .twinkle {
@@ -1028,7 +1238,7 @@
     mask-image: linear-gradient(180deg, transparent 0, #000 28%);
   }
   .rl {
-    font-size: clamp(16px, 4.6cqh, 34px);
+    font-size: calc(clamp(16px, 4.6cqh, 34px) * var(--ls, 1));
     font-weight: 620;
     font-stretch: 90%;
     line-height: 1.1;
@@ -1039,7 +1249,7 @@
   }
   .rl.now {
     margin-top: 0.14em;
-    font-size: clamp(28px, min(10cqh, 7cqw), 88px);
+    font-size: calc(clamp(28px, min(10cqh, 7cqw), 88px) * var(--ls, 1));
     font-weight: 800;
     font-stretch: 82%;
     letter-spacing: -0.012em;
@@ -1196,6 +1406,427 @@
     text-shadow: 0 2px 10px rgba(0, 0, 0, 0.75);
   }
 
+  /* ── Shards ──────────────────────────────────────── */
+  .shards {
+    --glow: color-mix(in oklab, var(--c1) 70%, white);
+    --edge-a: color-mix(in oklab, var(--c1) 85%, #ff3d8b);
+    --edge-b: color-mix(in oklab, var(--c2) 85%, #b6ff3d);
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: clamp(260px, 46vh, 580px);
+    container-type: size;
+  }
+  .sh-line,
+  .x-line {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6em;
+    padding: 0 4%;
+  }
+  /* The next line, waiting below (Shards, Code, Melt). */
+  .nx {
+    font-size: calc(clamp(15px, min(4.4cqh, 3cqw), 38px) * var(--ls, 1));
+    font-weight: 600;
+    text-align: center;
+    color: rgba(255, 255, 255, 0.42);
+    filter: blur(0.4px);
+    max-width: 90%;
+  }
+  .light .nx {
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+  }
+  .sh {
+    font-size: calc(clamp(34px, min(13cqh, 8.5cqw), 124px) * var(--ls, 1));
+    font-weight: 800;
+    line-height: 1.12;
+    letter-spacing: 0.01em;
+    text-align: center;
+    color: #fff;
+  }
+  .shw {
+    display: inline-block;
+    white-space: nowrap;
+    animation: sh-lit 900ms ease-out var(--d) both;
+  }
+  .shw.hold {
+    animation: sh-lit var(--t) ease-out var(--d) both;
+  }
+  /* A letter: the real one keeps its place (invisible), three copies of it,
+     each clipped to one sliver, fly in and lock together on top. */
+  .gx {
+    position: relative;
+    display: inline-block;
+  }
+  .gh {
+    visibility: hidden;
+  }
+  .sl {
+    position: absolute;
+    inset: 0;
+    font-style: normal;
+    animation: sh-in 560ms cubic-bezier(0.16, 0.9, 0.3, 1.08) calc(var(--a) - 470ms) both;
+  }
+  .sl.s0 {
+    clip-path: polygon(-20% -20%, 120% -20%, 120% 30%, -20% 48%);
+  }
+  .sl.s1 {
+    clip-path: polygon(-20% 48%, 120% 30%, 120% 66%, -20% 74%);
+  }
+  .sl.s2 {
+    clip-path: polygon(-20% 74%, 120% 66%, 120% 120%, -20% 120%);
+  }
+  @keyframes sh-in {
+    0% {
+      opacity: 0;
+      transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(var(--s));
+      text-shadow: -0.08em 0 0 var(--edge-a), 0.08em 0 0 var(--edge-b);
+    }
+    18% {
+      opacity: 1;
+    }
+    82% {
+      transform: translate(calc(var(--x) * -0.02), calc(var(--y) * -0.02)) rotate(calc(var(--r) * -0.03));
+      text-shadow: -0.05em 0 0 var(--edge-a), 0.05em 0 0 var(--edge-b);
+    }
+    100% {
+      opacity: 1;
+      transform: none;
+      text-shadow: none;
+    }
+  }
+  /* The word flares as it locks in, then settles; held words stay lit. */
+  @keyframes sh-lit {
+    0% {
+      color: #fff;
+      filter: drop-shadow(0 0 0 transparent);
+    }
+    12% {
+      color: color-mix(in oklab, var(--c1) 35%, white);
+      filter: drop-shadow(0 0 18px var(--glow));
+    }
+    100% {
+      color: #fff;
+      filter: drop-shadow(0 0 6px color-mix(in oklab, var(--glow) 30%, transparent));
+    }
+  }
+  .light .sh {
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  }
+
+  @property --close {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+  }
+  @property --fall {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+  }
+  @property --peel {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 0;
+  }
+  .code,
+  .melt,
+  .tags {
+    --glow: color-mix(in oklab, var(--c1) 70%, white);
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: clamp(260px, 46vh, 580px);
+    container-type: size;
+  }
+  .cd,
+  .mt {
+    font-size: calc(clamp(32px, min(12cqh, 8cqw), 116px) * var(--ls, 1));
+    font-weight: 780;
+    line-height: 1.12;
+    text-align: center;
+    color: #fff;
+  }
+
+  /* ── Code ────────────────────────────────────────── */
+  .cd-box {
+    position: relative;
+    padding: 0.2em 0.5em;
+    font-size: calc(clamp(32px, min(12cqh, 8cqw), 116px) * var(--ls, 1));
+  }
+  .cd-box .cd {
+    font-size: 1em;
+  }
+  .cw,
+  .mw,
+  .tw {
+    display: inline-block;
+    white-space: nowrap;
+  }
+  .cg {
+    position: relative;
+    display: inline-block;
+  }
+  /* The dot that holds the letter's place until it's sung. */
+  .dot {
+    position: absolute;
+    left: 50%;
+    top: 58%;
+    width: 0.26em;
+    height: 0.26em;
+    margin: -0.13em 0 0 -0.13em;
+    border-radius: 50%;
+    background: color-mix(in oklab, var(--c1) 55%, #ffd23d);
+    box-shadow: 0 0 0.3em color-mix(in oklab, var(--c1) 60%, #ffd23d);
+    animation:
+      cd-dot-in 320ms cubic-bezier(0.3, 1.6, 0.5, 1) calc(var(--j) * 14ms) backwards,
+      cd-dot-out 240ms ease-in calc(var(--a) - 140ms) both;
+  }
+  .ch {
+    display: inline-block;
+    animation: cd-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.1) calc(var(--a) - 120ms) both;
+  }
+  .cw.hold .ch {
+    animation:
+      cd-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.1) calc(var(--a) - 120ms) both,
+      cd-echo var(--t) ease-out var(--a) both;
+  }
+  @keyframes cd-dot-in {
+    from {
+      scale: 0;
+    }
+  }
+  @keyframes cd-dot-out {
+    from {
+      opacity: 1;
+      transform: scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: scale(0.1);
+    }
+  }
+  @keyframes cd-in {
+    from {
+      opacity: 0;
+      transform: scale(0.5);
+      filter: blur(5px);
+      color: color-mix(in oklab, var(--c1) 50%, #ffd23d);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+  @keyframes cd-echo {
+    0%,
+    15% {
+      text-shadow: 0.1em 0.07em 0 color-mix(in oklab, var(--c1) 55%, transparent), 0.2em 0.14em 0 color-mix(in oklab, var(--c2) 30%, transparent);
+    }
+    100% {
+      text-shadow: none;
+    }
+  }
+  /* Corner brackets: in at the start, closing in at the end. */
+  .br {
+    position: absolute;
+    width: 0.45em;
+    height: 0.45em;
+    border: 0 solid color-mix(in oklab, var(--c1) 55%, #ffd23d);
+    animation: cd-br 480ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  .b-tl {
+    left: calc(var(--close) * 45%);
+    top: calc(var(--close) * 40%);
+    border-width: 3px 0 0 3px;
+  }
+  .b-tr {
+    right: calc(var(--close) * 45%);
+    top: calc(var(--close) * 40%);
+    border-width: 3px 3px 0 0;
+  }
+  .b-bl {
+    left: calc(var(--close) * 45%);
+    bottom: calc(var(--close) * 40%);
+    border-width: 0 0 3px 3px;
+  }
+  .b-br {
+    right: calc(var(--close) * 45%);
+    bottom: calc(var(--close) * 40%);
+    border-width: 0 3px 3px 0;
+  }
+  @keyframes cd-br {
+    from {
+      opacity: 0;
+      scale: 1.6;
+    }
+  }
+  .cd-box .cd {
+    opacity: calc(1 - var(--close) * 0.8);
+  }
+
+  /* ── Melt ────────────────────────────────────────── */
+  .mt {
+    animation: mt-flicker 3.6s steps(1) infinite;
+  }
+  .mg {
+    display: inline-block;
+    transform-origin: 50% 0;
+    animation: mt-in 460ms ease-out calc(var(--a) - 220ms) both;
+    transform: translateY(calc(var(--fall) * (1.5em + var(--k) * 5em))) scaleY(calc(1 + var(--fall) * (1 + var(--k) * 2.5)));
+    filter: blur(calc(var(--fall) * 1.5px));
+    text-shadow:
+      0 calc(var(--fall) * 0.5em) 0 color-mix(in oklab, var(--c1) calc(var(--fall) * 90%), transparent),
+      0 calc(var(--fall) * 1.1em) 0 color-mix(in oklab, var(--c2) calc(var(--fall) * 70%), transparent);
+  }
+  .mw.hold .mg {
+    animation:
+      mt-in 460ms ease-out calc(var(--a) - 220ms) both,
+      mt-hold var(--t) ease-out var(--d) both;
+  }
+  @keyframes mt-in {
+    from {
+      clip-path: inset(0 100% 0 0);
+      color: color-mix(in oklab, var(--c1) 60%, white);
+      text-shadow: -0.4em 0 0.15em color-mix(in oklab, var(--c1) 60%, transparent);
+    }
+    to {
+      clip-path: inset(-20% -20% -400% -20%);
+      color: #fff;
+    }
+  }
+  @keyframes mt-hold {
+    0% {
+      color: color-mix(in oklab, var(--c1) 40%, white);
+    }
+    100% {
+      color: #fff;
+    }
+  }
+  /* A failing light: every few seconds the line dips for a frame or two. */
+  @keyframes mt-flicker {
+    0%,
+    61%,
+    64%,
+    88%,
+    100% {
+      opacity: 1;
+    }
+    62% {
+      opacity: 0.55;
+    }
+    89% {
+      opacity: 0.75;
+    }
+  }
+
+  /* ── Tags ────────────────────────────────────────── */
+  .tg-stack {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.28em;
+    padding-top: 0.9em;
+    font-size: calc(clamp(30px, min(10.5cqh, 7.6cqw), 104px) * var(--ls, 1) * min(1, 5.5 / var(--tn)));
+    transform-origin: 50% 0;
+    animation: tg-swing 3.4s ease-in-out infinite alternate;
+  }
+  .tg-string {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    bottom: 0.6em;
+    width: 2px;
+    margin-left: -1px;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .tag {
+    position: relative;
+    padding: 0.08em 0.38em 0.12em;
+    border-radius: 0.14em;
+    background: #fbf7f2;
+    color: color-mix(in oklab, var(--c1) 70%, #1a1020);
+    font-weight: 800;
+    line-height: 1.15;
+    white-space: nowrap;
+    box-shadow: 0 0.12em 0.4em rgba(0, 0, 0, 0.35);
+    rotate: var(--tilt);
+    animation: tg-drop 620ms cubic-bezier(0.2, 1.3, 0.4, 1) calc(var(--i) * 90ms) both;
+  }
+  .tgl {
+    display: inline-block;
+    height: 1.15em;
+    overflow: hidden;
+    vertical-align: bottom;
+    translate: calc(var(--peel) * (-1.4em - var(--j) * 0.08em)) calc(var(--peel) * -1.2em);
+    rotate: calc(var(--peel) * -50deg);
+    opacity: calc(1 - var(--peel));
+  }
+  .roll {
+    display: flex;
+    flex-direction: column;
+    animation: tg-roll 460ms cubic-bezier(0.3, 0.9, 0.35, 1.05) calc(var(--a) - 400ms) both;
+  }
+  .roll b {
+    display: block;
+    height: 1.15em;
+    font-weight: inherit;
+    text-align: center;
+  }
+  .roll b:not(:last-child) {
+    color: color-mix(in oklab, var(--c1) 40%, #9a93a3);
+  }
+  .tw.hold .tgl {
+    animation: tg-held var(--t) ease-out var(--d) both;
+  }
+  @keyframes tg-roll {
+    from {
+      transform: translateY(0);
+    }
+    to {
+      transform: translateY(-3.45em);
+    }
+  }
+  @keyframes tg-held {
+    0% {
+      color: var(--c1);
+    }
+  }
+  @keyframes tg-drop {
+    from {
+      opacity: 0;
+      transform: translateY(-2.2em) rotate(calc(var(--tilt) * -4));
+    }
+  }
+  @keyframes tg-swing {
+    from {
+      rotate: -2.2deg;
+    }
+    to {
+      rotate: 2.2deg;
+    }
+  }
+  .tg-gap {
+    font-size: calc(clamp(30px, min(10.5cqh, 7.6cqw), 104px) * var(--ls, 1));
+  }
+  .light .tag {
+    box-shadow: 0 0.12em 0.5em rgba(0, 0, 0, 0.5);
+  }
+  .light .cd,
+  .light .mt {
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  }
+
+  .code.paused *,
+  .melt.paused *,
+  .tags.paused *,
+  .shards.paused *,
   .depth.paused *,
   .rain.paused *,
   .orbit.paused * {
@@ -1207,6 +1838,28 @@
     }
     .drop {
       animation: splash 900ms ease-out var(--d) both;
+    }
+    .sl,
+    .ch,
+    .mg,
+    .roll {
+      animation: sh-fade 200ms linear calc(var(--a) - 100ms) both;
+    }
+    .roll {
+      transform: translateY(-3.45em);
+    }
+    .dot {
+      animation: cd-dot-out 1ms linear calc(var(--a) - 100ms) both;
+    }
+    .mt,
+    .tg-stack,
+    .tag {
+      animation: none;
+    }
+  }
+  @keyframes sh-fade {
+    from {
+      opacity: 0;
     }
   }
 </style>

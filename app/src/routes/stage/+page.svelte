@@ -20,6 +20,7 @@
   import StageLyrics from "$lib/StageLyrics.svelte";
   import SilkWall, { type Hole } from "$lib/SilkWall.svelte";
   import ArtWall, { type Look } from "$lib/ArtWall.svelte";
+  import DotWall from "$lib/DotWall.svelte";
   import SceneMenu, { type SceneSettings } from "$lib/SceneMenu.svelte";
   import PlayerControls from "$lib/PlayerControls.svelte";
   import MusicBrowser from "$lib/MusicBrowser.svelte";
@@ -263,7 +264,8 @@
   const live = $derived(np.playing && !covered);
   const motion = $derived((settings?.stageMotion ?? true) && live);
   const duration = $derived(track?.durationMs ?? null);
-  const position = $derived(np.positionAt(now));
+  let scrubbing = $state<number | null>(null); // ms while dragging the seek bar
+  const position = $derived(scrubbing ?? np.positionAt(now));
   const progress = $derived(duration ? Math.min(1, position / duration) : 0);
   const showLyrics = $derived((settings?.stageLyrics ?? true) && lyr.synced);
   const lyricsStyle = $derived<LyricsStyle>(settings?.stageLyricsStyle ?? "bold");
@@ -358,6 +360,7 @@
   // back in sync only when it drifts (seeking a video is not free).
   const wantVideo = $derived(settings?.stageWallpaper === "video");
   const wantSilk = $derived(settings?.stageWallpaper === "silk");
+  const wantDots = $derived(settings?.stageWallpaper === "dots");
   const SHADER_WALLS = ["water", "frost", "mosaic", "halftone"];
   const wantCover = $derived(settings?.stageWallpaper === "cover");
   const wantWater = $derived(SHADER_WALLS.includes(settings?.stageWallpaper ?? ""));
@@ -585,10 +588,24 @@
     }
   }
 
-  function seekFrom(e: PointerEvent) {
-    if (!duration) return;
+  // Seek bar: grab and drag. The bar follows the pointer while held, and the
+  // player seeks once, on release (seeking on every move made it stutter).
+  function msAt(e: PointerEvent): number | null {
+    if (!duration) return null;
     const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    np.seek(Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * duration);
+    return Math.min(1, Math.max(0, (e.clientX - r.left) / r.width)) * duration;
+  }
+  function startScrub(e: PointerEvent) {
+    if (!duration || e.button !== 0) return;
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    scrubbing = msAt(e);
+  }
+  function moveScrub(e: PointerEvent) {
+    if (scrubbing !== null) scrubbing = msAt(e);
+  }
+  function endScrub() {
+    if (scrubbing !== null) np.seek(scrubbing);
+    scrubbing = null;
   }
 
   const rise = { y: 38, duration: 560, easing: cubicOut };
@@ -643,7 +660,7 @@
   style:--c3={palette[2] ?? palette[1] ?? palette[0]}
 >
   <!-- Wall: the album washed across the screen. -->
-  <div class="wall" class:silky={wantSilk && !videoId} class:watery={(wantWater || wantCover) && !videoId} class:under-video={Boolean(videoId && videoReady)} aria-hidden="true">
+  <div class="wall" class:silky={wantSilk && !videoId} class:watery={(wantWater || wantCover || wantDots) && !videoId} class:under-video={Boolean(videoId && videoReady)} aria-hidden="true">
     {#if wantCover && !videoId}
       <!-- Cover: just the album cover, still, on a dark wall. -->
       {#key artSrc}
@@ -655,10 +672,13 @@
     {#if wantWater && !videoId}
       <ArtWall src={artSrc} running={motion} beat={settings?.stageBeat ?? true} look={(settings?.stageWallpaper ?? "water") as Look} />
     {/if}
+    {#if wantDots && !videoId}
+      <DotWall colors={palette} src={artSrc} running={motion} beat={settings?.stageBeat ?? true} />
+    {/if}
     {#if wantSilk && !videoId}
-      {#key track?.artUrl}
-        {#if track?.artUrl}
-          <img class="silk-art" src={track.artUrl} alt="" transition:fade={{ duration: 1200 }} />
+      {#key artSrc}
+        {#if artSrc}
+          <img class="silk-art" src={artSrc} alt="" transition:fade={{ duration: 1200 }} />
         {/if}
       {/key}
       <SilkWall colors={palette} running={motion} measure={silkHoles} />
@@ -899,7 +919,7 @@
         <p class="ct">{track.title}</p>
         <p class="ca">{track.artist || track.source}</p>
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="bar" onpointerdown={seekFrom}>
+        <div class="bar" class:drag={scrubbing !== null} onpointerdown={startScrub} onpointermove={moveScrub} onpointerup={endScrub} onpointercancel={endScrub}>
           <div class="fill" style:width={`${progress * 100}%`}></div>
         </div>
         <div class="times"><span>{formatTime(position)}</span><span>{formatTime(duration)}</span></div>
@@ -923,7 +943,7 @@
       <div class="progress">
         <span class="time">{formatTime(position)}</span>
         <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
-        <div class="bar" onpointerdown={seekFrom}>
+        <div class="bar" class:drag={scrubbing !== null} onpointerdown={startScrub} onpointermove={moveScrub} onpointerup={endScrub} onpointercancel={endScrub}>
           <div class="fill" style:width={`${progress * 100}%`}></div>
         </div>
         <span class="time">{formatTime(duration)}</span>
@@ -1041,7 +1061,7 @@
     width: 100%;
     height: 100%;
     object-fit: cover;
-    filter: brightness(0.58) saturate(1.1);
+    filter: brightness(0.82) saturate(1.08);
   }
   /* Music video wallpaper: cover the screen like object-fit: cover. */
   .wall > .mv {
@@ -1303,6 +1323,10 @@
     display: grid;
     gap: 2px;
     padding-left: 4px;
+    /* Above the Glow look's light, and readable on any cover. */
+    position: relative;
+    z-index: 2;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.55);
   }
   figcaption .t {
     font-weight: 650;
@@ -1841,11 +1865,30 @@
     align-items: center;
     cursor: pointer;
     position: relative;
+    touch-action: none;
+    user-select: none;
   }
   .bar::before,
   .fill {
     height: 4px;
     border-radius: 2px;
+  }
+  /* A knob to grab, shown on hover and while dragging. */
+  .bar:hover .fill::after,
+  .bar.drag .fill::after {
+    content: "";
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    width: 12px;
+    height: 12px;
+    translate: 0 -50%;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 0 10px 2px color-mix(in oklab, var(--c1) 70%, transparent);
+  }
+  .bar.drag {
+    cursor: grabbing;
   }
   .bar::before {
     content: "";
@@ -2042,9 +2085,11 @@
     aspect-ratio: 1;
     object-fit: cover;
     border-radius: 30%;
-    filter: blur(48px) saturate(2) brightness(1.35);
-    opacity: 1;
-    transform: translateY(8%) scale(1.28);
+    /* Softer and kept round the cover: it used to spill over the song's
+       name below and wash it out. */
+    filter: blur(40px) saturate(1.6) brightness(1.1);
+    opacity: 0.6;
+    transform: scale(1.12);
     pointer-events: none;
   }
   @media (prefers-reduced-motion: reduce) {
@@ -2099,6 +2144,12 @@
   }
   .dock-pill .bar {
     height: 6px;
+  }
+  /* The hairline is thin: a taller, invisible area to grab it by. */
+  .dock-pill .bar::after {
+    content: "";
+    position: absolute;
+    inset: -8px 0;
   }
   .dock-pill .bar::before {
     inset: 2px 0;

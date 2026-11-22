@@ -801,25 +801,50 @@ fn send_playback(app: &AppHandle, playback: PlaybackView) {
 /// when a new song follows them, and of the play / pause / stop reports only
 /// the last counts. Replayed one by one, they blanked the scene for a moment:
 /// no song, stopped, the old position, then the new song.
+///
+/// Spotify can report the new song's start (position ~0) a moment *before*
+/// its name. That report is the new song's, not the old one's: it moves to
+/// just after the song change. Dropped, the new song kept the old song's end
+/// position, so the bar sat full and the lyrics froze until the next seek.
 fn settle(events: Vec<MediaEvent>) -> Vec<MediaEvent> {
+    let is_start = |e: &MediaEvent| matches!(e, MediaEvent::TimelineChanged(tl) if tl.position < Duration::from_secs(5));
     let last_track = events
         .iter()
         .rposition(|e| matches!(e, MediaEvent::TrackChanged(_)));
     let last_status = events
         .iter()
         .rposition(|e| matches!(e, MediaEvent::PlaybackChanged(_)));
-    events
-        .into_iter()
-        .enumerate()
-        .filter(|(i, e)| match e {
+    let early_start = last_track.and_then(|t| {
+        let later = events[t + 1..]
+            .iter()
+            .any(|e| matches!(e, MediaEvent::TimelineChanged(_)));
+        (!later)
+            .then(|| events[..t].iter().rposition(is_start))
+            .flatten()
+    });
+    let mut start = None;
+    let mut kept = Vec::with_capacity(events.len());
+    for (i, e) in events.into_iter().enumerate() {
+        if Some(i) == early_start {
+            start = Some(e);
+            continue;
+        }
+        let keep = match &e {
             MediaEvent::SessionChanged(None) | MediaEvent::TimelineChanged(_) => {
-                last_track.is_none_or(|t| *i > t)
+                last_track.is_none_or(|t| i > t)
             }
-            MediaEvent::PlaybackChanged(_) => Some(*i) == last_status,
+            MediaEvent::PlaybackChanged(_) => Some(i) == last_status,
             _ => true,
-        })
-        .map(|(_, e)| e)
-        .collect()
+        };
+        if keep {
+            let track = Some(i) == last_track;
+            kept.push(e);
+            if track && let Some(s) = start.take() {
+                kept.push(s);
+            }
+        }
+    }
+    kept
 }
 
 /// Most a resent position may differ from where the last one predicted it.
@@ -901,6 +926,10 @@ pub(crate) fn reemit_playback(app: &AppHandle) {
 }
 
 fn track_view(info: &TrackInfo, old: TrackView) -> TrackView {
+    // A web player tells the new song's length only with its first position
+    // report. Until then keep the old length only for the same song: another
+    // song's (or a 30 s ad's) length made the bar fill early and stay full.
+    let same_song = old.title == info.title && old.artist == info.artist;
     TrackView {
         title: info.title.clone(),
         artist: info.artist.clone(),
@@ -908,7 +937,7 @@ fn track_view(info: &TrackInfo, old: TrackView) -> TrackView {
         duration_ms: info
             .duration
             .map(|d| d.as_secs_f64() * 1000.0)
-            .or(old.duration_ms),
+            .or(old.duration_ms.filter(|_| same_song)),
         source: friendly_source(&info.source_app),
         // Art and palette arrive separately; keep the old ones until then.
         art_url: old.art_url,
@@ -1013,6 +1042,30 @@ fn hash(data: &[u8]) -> u64 {
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_new_song_does_not_keep_the_old_length() {
+        let info = |title: &str| TrackInfo {
+            title: title.into(),
+            artist: "A".into(),
+            album: String::new(),
+            album_artist: String::new(),
+            duration: None,
+            source_app: "Glowtune".into(),
+        };
+        let ad = TrackView {
+            title: "Advertisement".into(),
+            artist: "A".into(),
+            duration_ms: Some(30_000.0),
+            ..Default::default()
+        };
+        assert_eq!(track_view(&info("Destiny"), ad.clone()).duration_ms, None);
+        // The same song again (its art arriving, say) keeps it.
+        assert_eq!(
+            track_view(&info("Advertisement"), ad).duration_ms,
+            Some(30_000.0)
+        );
+    }
+
     fn playing_at(position_ms: f64, at_ms: f64) -> PlaybackView {
         PlaybackView {
             status: "playing",
@@ -1081,6 +1134,14 @@ mod tests {
         assert!(kept[0].contains("next"));
         assert!(kept[1].contains("Playing"));
         assert!(kept[2].contains("2s"));
+
+        // The new song's start reported before its name moves after it; the
+        // old song's end position is still dropped.
+        let held = vec![at(203), at(1), song("next")];
+        let kept: Vec<String> = settle(held).iter().map(|e| format!("{e:?}")).collect();
+        assert_eq!(kept.len(), 2, "{kept:#?}");
+        assert!(kept[0].contains("next"));
+        assert!(kept[1].contains("1s"));
     }
 
     #[test]

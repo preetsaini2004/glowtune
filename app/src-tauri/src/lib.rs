@@ -72,15 +72,16 @@ fn player_size(style: &str, size: &str) -> (f64, f64) {
         "card" => (300.0, 410.0),
         "pill" => (380.0, 68.0),
         "lyric" => (600.0, 104.0),
+        "clear" => (460.0, 124.0),
         _ => (480.0, 132.0),
     };
     (w * k, h * k)
 }
 
-/// Round and capsule looks draw their own shape: no glass rectangle or
-/// square shadow behind them.
+/// Round, capsule and clear looks draw their own shape: no glass rectangle
+/// or square shadow behind them.
 fn player_shaped(style: &str) -> bool {
-    matches!(style, "disc" | "pill")
+    matches!(style, "disc" | "pill" | "clear")
 }
 
 /// Gives the open player its look's size and glass, keeping its bottom-right
@@ -115,6 +116,26 @@ fn shape_player(w: &tauri::WebviewWindow, style: &str, size: &str) -> tauri::Res
     Ok(())
 }
 const LYRICS_SIZE: (f64, f64) = (1200.0, 260.0);
+/// Smallest and largest desktop lyrics box (logical px).
+const LYRICS_MIN: (f64, f64) = (420.0, 120.0);
+const LYRICS_MAX: (f64, f64) = (3840.0, 1400.0);
+
+/// The desktop lyrics box size: yours (Move lyrics), else the default.
+fn lyrics_box(app: &AppHandle) -> (f64, f64) {
+    let saved = app
+        .state::<AppSettings>()
+        .current
+        .lock()
+        .ok()
+        .and_then(|s| s.lyrics_box);
+    match saved {
+        Some([w, h]) if w.is_finite() && h.is_finite() => (
+            w.clamp(LYRICS_MIN.0, LYRICS_MAX.0),
+            h.clamp(LYRICS_MIN.1, LYRICS_MAX.1),
+        ),
+        _ => LYRICS_SIZE,
+    }
+}
 const SETTINGS_SIZE: (f64, f64) = (780.0, 640.0);
 
 /// Settings plus where they live on disk.
@@ -199,7 +220,19 @@ pub(crate) fn transport(app: AppHandle, action: &'static str) {
 /// and creating a window from a synchronous command deadlocks on Windows.
 #[tauri::command]
 async fn set_settings(new: Settings, app: AppHandle) -> Result<Settings, String> {
-    save_settings(new, &app)
+    let current = current_settings(&app);
+    save_settings(keep_owned(new, &current), &app)
+}
+
+/// The windows send back their whole copy of the settings, which can be a
+/// moment out of date. The theme and the saved presets have their own
+/// commands, so keep those as they are now: a stale copy put back the
+/// previous theme (seen live: Needle dust after a restart instead of the
+/// theme just picked) or dropped a preset just saved.
+fn keep_owned(mut new: Settings, current: &Settings) -> Settings {
+    new.active_theme.clone_from(&current.active_theme);
+    new.scene_presets.clone_from(&current.scene_presets);
+    new
 }
 
 fn save_settings(new: Settings, app: &AppHandle) -> Result<Settings, String> {
@@ -261,11 +294,12 @@ fn select_theme(id: String, app: AppHandle) -> Result<themes::Theme, String> {
     if settings.disabled_themes.contains(&id) {
         return Err("Enable this theme in Settings → Themes first.".into());
     }
-    let theme = app.state::<Arc<ThemeService>>().select(&id)?;
-    update_settings(&app, |s| {
-        s.active_theme = id;
-        s.use_theme = true;
-    });
+    // Picking a theme leaves "Use the theme's colors" as it is: switched off,
+    // the new theme's look shows with the album's colors.
+    let service = app.state::<Arc<ThemeService>>();
+    service.select(&id)?;
+    update_settings(&app, |s| s.active_theme = id);
+    let theme = service.current();
     apply_theme(&app, &theme);
     Ok(theme)
 }
@@ -274,7 +308,7 @@ fn select_theme(id: String, app: AppHandle) -> Result<themes::Theme, String> {
 #[tauri::command]
 fn preview_theme(theme: themes::Theme, app: AppHandle) -> Vec<String> {
     let service = app.state::<Arc<ThemeService>>();
-    if !service.enabled() {
+    if !service.look_shown() {
         return vec!["Enable the selected theme before editing.".into()];
     }
     let (theme, warnings) = service.preview(theme);
@@ -285,7 +319,7 @@ fn preview_theme(theme: themes::Theme, app: AppHandle) -> Vec<String> {
 #[tauri::command]
 fn save_theme(theme: themes::Theme, app: AppHandle) -> Result<String, String> {
     let service = app.state::<Arc<ThemeService>>();
-    if !service.enabled() {
+    if !service.look_shown() {
         return Err("Enable the selected theme before saving.".into());
     }
     let id = service.save(theme)?;
@@ -425,11 +459,23 @@ async fn lyrics_move(on: bool, app: AppHandle) -> Result<(), String> {
     };
     lyrics_gate::MOVING.store(on, Ordering::Relaxed);
     w.set_ignore_cursor_events(!on).map_err(|e| e.to_string())?;
+    // Resizable only while you place it (the corner grips).
+    w.set_resizable(on).map_err(|e| e.to_string())?;
     if on {
         w.show().map_err(|e| e.to_string())?;
     } else {
         let p = w.outer_position().map_err(|e| e.to_string())?;
-        update_settings(&app, |s| s.lyrics_position = Some([p.x, p.y]));
+        let k = w.scale_factor().map_err(|e| e.to_string())?;
+        let size = w
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(k);
+        let changed =
+            (size.width - LYRICS_SIZE.0).abs() > 2.0 || (size.height - LYRICS_SIZE.1).abs() > 2.0;
+        update_settings(&app, |s| {
+            s.lyrics_position = Some([p.x, p.y]);
+            s.lyrics_box = changed.then_some([size.width, size.height]);
+        });
     }
     let _ = app.emit_to(LYRICS, "lyrics-move", on);
     if let Some(g) = app.try_state::<lyrics_gate::LyricsGate>() {
@@ -441,8 +487,14 @@ async fn lyrics_move(on: bool, app: AppHandle) -> Result<(), String> {
 /// Puts the desktop lyrics back at the theme's position.
 #[tauri::command]
 async fn lyrics_reset_position(app: AppHandle) -> Result<(), String> {
-    update_settings(&app, |s| s.lyrics_position = None);
+    update_settings(&app, |s| {
+        s.lyrics_position = None;
+        s.lyrics_box = None;
+    });
     if let Some(w) = app.get_webview_window(LYRICS) {
+        let (width, height) = LYRICS_SIZE;
+        w.set_size(tauri::LogicalSize::new(width, height))
+            .map_err(|e| e.to_string())?;
         place_lyrics(&app, &w).map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -911,7 +963,7 @@ fn set_lyrics_visible(app: &AppHandle, visible: bool) -> tauri::Result<()> {
     if app.get_webview_window(LYRICS).is_some() {
         return Ok(());
     }
-    let (w, h) = LYRICS_SIZE;
+    let (w, h) = lyrics_box(app);
     let builder = WebviewWindowBuilder::new(app, LYRICS, WebviewUrl::App("/lyrics".into()))
         .title("Glowtune lyrics")
         .inner_size(w, h)
@@ -919,6 +971,8 @@ fn set_lyrics_visible(app: &AppHandle, visible: bool) -> tauri::Result<()> {
         .transparent(true)
         .shadow(false)
         .resizable(false)
+        .min_inner_size(LYRICS_MIN.0, LYRICS_MIN.1)
+        .max_inner_size(LYRICS_MAX.0, LYRICS_MAX.1)
         .always_on_top(true)
         .skip_taskbar(true)
         .focusable(false)
@@ -1152,6 +1206,7 @@ pub fn run() {
             open_settings_tab,
             store::store_catalog,
             store::store_install,
+            store::store_reinstall,
             store::store_use,
             store::store_remove,
             open_service,
@@ -1309,4 +1364,27 @@ pub fn run() {
             api.prevent_exit();
         }
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stale_window_cannot_put_back_an_old_theme_or_drop_presets() {
+        let current = Settings {
+            active_theme: "my-theme".into(),
+            scene_presets: vec![Default::default()],
+            ..Default::default()
+        };
+        let stale = Settings {
+            active_theme: "needle-dust".into(),
+            stage_wallpaper: "dots".into(),
+            ..Default::default()
+        };
+        let kept = keep_owned(stale, &current);
+        assert_eq!(kept.active_theme, "my-theme");
+        assert_eq!(kept.scene_presets.len(), 1);
+        assert_eq!(kept.stage_wallpaper, "dots");
+    }
 }

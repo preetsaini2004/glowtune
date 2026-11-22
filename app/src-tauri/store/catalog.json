@@ -6,7 +6,7 @@
       "kind": "theme",
       "name": "After hours",
       "author": "Glowtune",
-      "description": "Violet neon, taxi-light blue. One more track before dawn.",
+      "description": "Violet neon and taxi-light blue, with two comets racing round the edge. One more track before dawn.",
       "colors": [
         "#b58aff",
         "#55cfff",
@@ -16,14 +16,15 @@
         "night",
         "neon"
       ],
-      "toml": "[meta]\nname = \"After hours\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#0d091b\"\nsurface = \"#ffffff18\"\ntext = \"#f5edff\"\naccent = \"#b58aff\"\nglow = [\"#b58aff\",\"#55cfff\",\"#ff63b5\"]\n\n[glass]\nblur = 36\nopacity = 0.5\nradius = 24\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 50\n\n[glow]\neffect = \"orbit\"\neffect_speed = 0.7\nenabled = true\nthickness = 64\nintensity = 1.1\nbeat_reactivity = 0.8\ndrift_speed = 1.6\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"After hours\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#0d091b\"\nsurface = \"#ffffff18\"\ntext = \"#f5edff\"\naccent = \"#b58aff\"\nglow = [\"#b58aff\", \"#55cfff\", \"#ff63b5\"]\n\n[glass]\nblur = 36\nopacity = 0.5\nradius = 24\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 50\n\n[glow]\nenabled = true\nthickness = 64\nintensity = 1.1\nbeat_reactivity = 0.8\ndrift_speed = 1.6\neffect = \"comet\"\neffect_speed = 0.9\neffect_strength = 1\nreverse_motion = false\nparticles = \"off\"\nparticle_density = 0.35\nparticle_size = 1\nparticle_speed = 1\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "One more song, then home"
     },
     {
       "id": "needle-dust",
       "kind": "theme",
       "name": "Needle dust",
       "author": "Glowtune",
-      "description": "Honeyed glass and paper lyrics. A little warmth in the grooves.",
+      "description": "Honeyed glass, paper lyrics and a little dust drifting in the light.",
       "colors": [
         "#e2ac6a",
         "#b96c46",
@@ -33,14 +34,15 @@
         "warm",
         "vinyl"
       ],
-      "toml": "[meta]\nname = \"Needle dust\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#20150f\"\nsurface = \"#ffffff18\"\ntext = \"#fae9cd\"\naccent = \"#e2ac6a\"\nglow = [\"#e2ac6a\",\"#b96c46\",\"#f1dbb6\"]\n\n[glass]\nblur = 16\nopacity = 0.76\nradius = 10\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 46\n\n[glow]\neffect = \"still\"\neffect_speed = 1\nenabled = true\nthickness = 50\nintensity = 0.8\nbeat_reactivity = 0.35\ndrift_speed = 0.2\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Needle dust\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#20150f\"\nsurface = \"#ffffff18\"\ntext = \"#fae9cd\"\naccent = \"#e2ac6a\"\nglow = [\"#e2ac6a\", \"#b96c46\", \"#f1dbb6\"]\n\n[glass]\nblur = 16\nopacity = 0.76\nradius = 10\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 46\n\n[glow]\nenabled = true\nthickness = 50\nintensity = 0.8\nbeat_reactivity = 0.35\ndrift_speed = 0.2\neffect = \"ambient\"\neffect_speed = 0.4\neffect_strength = 1\nreverse_motion = false\nparticles = \"dust\"\nparticle_density = 0.3\nparticle_size = 1\nparticle_speed = 0.5\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"center\"\nshow_on_desktop = true\n",
+      "sample": "Drop the needle and stay"
     },
     {
       "id": "control-room",
       "kind": "theme",
       "name": "Control room",
       "author": "Glowtune",
-      "description": "Silver light, smoked glass, nothing in the way.",
+      "description": "Silver light, smoked glass and a meter bridge that moves with the mix.",
       "colors": [
         "#dce5eb",
         "#8295a5"
@@ -49,14 +51,15 @@
         "mono",
         "studio"
       ],
-      "toml": "[meta]\nname = \"Control room\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#101419\"\nsurface = \"#ffffff18\"\ntext = \"#f5f7fa\"\naccent = \"#dce5eb\"\nglow = [\"#dce5eb\",\"#8295a5\"]\n\n[glass]\nblur = 24\nopacity = 0.72\nradius = 4\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 40\n\n[glow]\nenabled = true\nthickness = 32\nintensity = 0.55\nbeat_reactivity = 0.15\ndrift_speed = 0.1\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"top-center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Control room\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#101419\"\nsurface = \"#ffffff18\"\ntext = \"#f5f7fa\"\naccent = \"#dce5eb\"\nglow = [\"#dce5eb\", \"#8295a5\"]\n\n[glass]\nblur = 24\nopacity = 0.72\nradius = 4\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 40\n\n[glow]\nenabled = true\nthickness = 40\nintensity = 0.7\nbeat_reactivity = 0.7\ndrift_speed = 0.1\neffect = \"bars\"\neffect_speed = 1\neffect_strength = 1\nreverse_motion = false\nparticles = \"off\"\nparticle_density = 0.35\nparticle_size = 1\nparticle_speed = 1\nparticle_sparkle = 0.5\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"top-center\"\nshow_on_desktop = true\n",
+      "sample": "Take it from the top"
     },
     {
       "id": "last-light",
       "kind": "theme",
       "name": "Last light",
       "author": "Glowtune",
-      "description": "Apricot melts into rose. Keep the golden hour playing.",
+      "description": "Apricot melts into rose, and a few embers drift up. Keep the golden hour playing.",
       "colors": [
         "#ffad79",
         "#ef739e",
@@ -66,14 +69,15 @@
         "sunset",
         "soft"
       ],
-      "toml": "[meta]\nname = \"Last light\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#21121b\"\nsurface = \"#ffffff18\"\ntext = \"#fff0e8\"\naccent = \"#ffad79\"\nglow = [\"#ffad79\",\"#ef739e\",\"#9b85e4\"]\n\n[glass]\nblur = 40\nopacity = 0.48\nradius = 28\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 56\n\n[glow]\neffect = \"lava-lamp\"\neffect_speed = 0.6\nenabled = true\nthickness = 82\nintensity = 1\nbeat_reactivity = 0.5\ndrift_speed = 0.65\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Last light\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#21121b\"\nsurface = \"#ffffff18\"\ntext = \"#fff0e8\"\naccent = \"#ffad79\"\nglow = [\"#ffad79\", \"#ef739e\", \"#9b85e4\"]\n\n[glass]\nblur = 40\nopacity = 0.48\nradius = 28\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 56\n\n[glow]\nenabled = true\nthickness = 82\nintensity = 1\nbeat_reactivity = 0.5\ndrift_speed = 0.65\neffect = \"lava-lamp\"\neffect_speed = 0.6\neffect_strength = 1\nreverse_motion = false\nparticles = \"embers\"\nparticle_density = 0.25\nparticle_size = 1\nparticle_speed = 0.6\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Hold the gold a little longer"
     },
     {
       "id": "blue-hour",
       "kind": "theme",
       "name": "Blue hour",
       "author": "Glowtune",
-      "description": "Deep-water glass and slow ribbons of electric blue.",
+      "description": "Deep-water glass. Slow tides roll up the sides and bubbles rise with the beat.",
       "colors": [
         "#3dd9c4",
         "#3989ee",
@@ -83,14 +87,15 @@
         "ocean",
         "calm"
       ],
-      "toml": "[meta]\nname = \"Blue hour\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#051923\"\nsurface = \"#ffffff18\"\ntext = \"#e2fcff\"\naccent = \"#3dd9c4\"\nglow = [\"#3dd9c4\",\"#3989ee\",\"#6670d6\"]\n\n[glass]\nblur = 48\nopacity = 0.6\nradius = 18\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Segoe UI\"\nlyrics_size = 48\n\n[glow]\neffect = \"lava-lamp\"\neffect_speed = 0.8\nenabled = true\nthickness = 74\nintensity = 0.95\nbeat_reactivity = 0.4\ndrift_speed = 0.45\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Blue hour\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#051923\"\nsurface = \"#ffffff18\"\ntext = \"#e2fcff\"\naccent = \"#3dd9c4\"\nglow = [\"#3dd9c4\", \"#3989ee\", \"#6670d6\"]\n\n[glass]\nblur = 48\nopacity = 0.6\nradius = 18\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Segoe UI\"\nlyrics_size = 48\n\n[glow]\nenabled = true\nthickness = 74\nintensity = 0.95\nbeat_reactivity = 0.4\ndrift_speed = 0.45\neffect = \"tide\"\neffect_speed = 0.7\neffect_strength = 1\nreverse_motion = false\nparticles = \"bubbles\"\nparticle_density = 0.3\nparticle_size = 1.4\nparticle_speed = 0.7\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Down where the light goes slow"
     },
     {
       "id": "sugar-static",
       "kind": "theme",
       "name": "Sugar static",
       "author": "Glowtune",
-      "description": "Lilac candy and pistachio light, with a gentle pop.",
+      "description": "Lilac candy, pistachio light and sprinkles that pop on every beat.",
       "colors": [
         "#d8b4f4",
         "#a9e3cb",
@@ -100,14 +105,15 @@
         "pastel",
         "playful"
       ],
-      "toml": "[meta]\nname = \"Sugar static\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#231d30\"\nsurface = \"#ffffff18\"\ntext = \"#fff5ff\"\naccent = \"#d8b4f4\"\nglow = [\"#d8b4f4\",\"#a9e3cb\",\"#ffc5d3\"]\n\n[glass]\nblur = 32\nopacity = 0.55\nradius = 32\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 54\n\n[glow]\neffect = \"ambient\"\neffect_speed = 1\nenabled = true\nthickness = 46\nintensity = 0.75\nbeat_reactivity = 0.3\ndrift_speed = 0.4\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Sugar static\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"adaptive\"\nbackground = \"#231d30\"\nsurface = \"#ffffff18\"\ntext = \"#fff5ff\"\naccent = \"#d8b4f4\"\nglow = [\"#d8b4f4\", \"#a9e3cb\", \"#ffc5d3\"]\n\n[glass]\nblur = 32\nopacity = 0.55\nradius = 32\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 54\n\n[glow]\nenabled = true\nthickness = 46\nintensity = 0.8\nbeat_reactivity = 0.7\ndrift_speed = 0.4\neffect = \"pulse\"\neffect_speed = 1\neffect_strength = 1\nreverse_motion = false\nparticles = \"dots\"\nparticle_density = 0.4\nparticle_size = 1\nparticle_speed = 1\nparticle_sparkle = 0.8\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"center\"\nshow_on_desktop = true\n",
+      "sample": "Sweet on the radio"
     },
     {
       "id": "acid-test",
       "kind": "theme",
       "name": "Acid test",
       "author": "Glowtune",
-      "description": "Hard lime, hot pink, sharp corners. Built for the drop.",
+      "description": "Hard lime, hot pink, sharp corners and a strobe of sparks. Built for the drop.",
       "colors": [
         "#d5ff46",
         "#ff4aa2",
@@ -117,14 +123,15 @@
         "club",
         "contrast"
       ],
-      "toml": "[meta]\nname = \"Acid test\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#090c08\"\nsurface = \"#ffffff18\"\ntext = \"#f7ffe8\"\naccent = \"#d5ff46\"\nglow = [\"#d5ff46\",\"#ff4aa2\",\"#f5fff0\"]\n\n[glass]\nblur = 8\nopacity = 0.85\nradius = 0\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 64\n\n[glow]\neffect = \"distortion\"\neffect_speed = 1.2\nenabled = true\nthickness = 100\nintensity = 1.4\nbeat_reactivity = 1\ndrift_speed = 2.2\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Acid test\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#090c08\"\nsurface = \"#ffffff18\"\ntext = \"#f7ffe8\"\naccent = \"#d5ff46\"\nglow = [\"#d5ff46\", \"#ff4aa2\", \"#f5fff0\"]\n\n[glass]\nblur = 8\nopacity = 0.85\nradius = 0\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 64\n\n[glow]\nenabled = true\nthickness = 100\nintensity = 1.4\nbeat_reactivity = 1\ndrift_speed = 2.2\neffect = \"distortion\"\neffect_speed = 1.4\neffect_strength = 1\nreverse_motion = false\nparticles = \"stars\"\nparticle_density = 0.45\nparticle_size = 1\nparticle_speed = 1.6\nparticle_sparkle = 1\ncorners = \"square\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"center\"\nshow_on_desktop = true\n",
+      "sample": "Wait for it, wait for the drop"
     },
     {
       "id": "moss-tape",
       "kind": "theme",
       "name": "Moss tape",
       "author": "Glowtune",
-      "description": "Fern green over dark bark. A slow walk with headphones.",
+      "description": "Fern green over dark bark, with fireflies after sundown. A slow walk with headphones.",
       "colors": [
         "#9dc58b",
         "#b7a16d",
@@ -134,14 +141,90 @@
         "forest",
         "earth"
       ],
-      "toml": "[meta]\nname = \"Moss tape\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#121b15\"\nsurface = \"#ffffff18\"\ntext = \"#eef2dc\"\naccent = \"#9dc58b\"\nglow = [\"#9dc58b\",\"#b7a16d\",\"#537c68\"]\n\n[glass]\nblur = 28\nopacity = 0.68\nradius = 16\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 44\n\n[glow]\neffect = \"still\"\neffect_speed = 1\nenabled = true\nthickness = 52\nintensity = 0.7\nbeat_reactivity = 0.2\ndrift_speed = 0.25\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n"
+      "toml": "[meta]\nname = \"Moss tape\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"static\"\nbackground = \"#121b15\"\nsurface = \"#ffffff18\"\ntext = \"#eef2dc\"\naccent = \"#9dc58b\"\nglow = [\"#9dc58b\", \"#b7a16d\", \"#537c68\"]\n\n[glass]\nblur = 28\nopacity = 0.68\nradius = 16\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 44\n\n[glow]\nenabled = true\nthickness = 52\nintensity = 0.7\nbeat_reactivity = 0.2\ndrift_speed = 0.25\neffect = \"ambient\"\neffect_speed = 0.5\neffect_strength = 1\nreverse_motion = false\nparticles = \"fireflies\"\nparticle_density = 0.3\nparticle_size = 1\nparticle_speed = 0.6\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"static\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Green all the way down"
+    },
+    {
+      "id": "first-snow",
+      "kind": "theme",
+      "name": "First snow",
+      "author": "Glowtune",
+      "description": "Northern lights fold along the edge while snow falls through them. The street gone quiet.",
+      "colors": [
+        "#a9e8ff",
+        "#7fa8ff",
+        "#c6b8ff"
+      ],
+      "tags": [
+        "winter",
+        "quiet"
+      ],
+      "toml": "[meta]\nname = \"First snow\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#0a1220\"\nsurface = \"#ffffff18\"\ntext = \"#eef6ff\"\naccent = \"#a9e8ff\"\nglow = [\"#a9e8ff\", \"#7fa8ff\", \"#c6b8ff\"]\n\n[glass]\nblur = 44\nopacity = 0.55\nradius = 22\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 52\n\n[glow]\nenabled = true\nthickness = 80\nintensity = 1\nbeat_reactivity = 0.35\ndrift_speed = 0.5\neffect = \"aurora\"\neffect_speed = 0.6\neffect_strength = 1\nreverse_motion = false\nparticles = \"snow\"\nparticle_density = 0.45\nparticle_size = 1.2\nparticle_speed = 0.6\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Quiet as the first snow",
+      "fresh": true
+    },
+    {
+      "id": "wet-asphalt",
+      "kind": "theme",
+      "name": "Wet asphalt",
+      "author": "Glowtune",
+      "description": "A thin neon tube inside the edge, pink and cyan, like a sign after the rain.",
+      "colors": [
+        "#ff4f9a",
+        "#3fe0ff"
+      ],
+      "tags": [
+        "city",
+        "neon"
+      ],
+      "toml": "[meta]\nname = \"Wet asphalt\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#0b0d12\"\nsurface = \"#ffffff18\"\ntext = \"#f4f7ff\"\naccent = \"#ff4f9a\"\nglow = [\"#ff4f9a\", \"#3fe0ff\"]\n\n[glass]\nblur = 20\nopacity = 0.7\nradius = 8\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Instrument Sans\"\nlyrics_size = 54\n\n[glow]\nenabled = true\nthickness = 60\nintensity = 1.25\nbeat_reactivity = 0.8\ndrift_speed = 0.8\neffect = \"neon\"\neffect_speed = 1\neffect_strength = 1\nreverse_motion = false\nparticles = \"off\"\nparticle_density = 0.35\nparticle_size = 1\nparticle_speed = 1\nparticle_sparkle = 0.5\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"karaoke\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Neon in the puddles",
+      "fresh": true
+    },
+    {
+      "id": "low-orbit",
+      "kind": "theme",
+      "name": "Low orbit",
+      "author": "Glowtune",
+      "description": "A swell of light travels round the screen through a field of stars. Headphones on, gravity off.",
+      "colors": [
+        "#8e7dff",
+        "#4fd2ff",
+        "#ffffff"
+      ],
+      "tags": [
+        "space",
+        "dreamy"
+      ],
+      "toml": "[meta]\nname = \"Low orbit\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#05060d\"\nsurface = \"#ffffff18\"\ntext = \"#eef0ff\"\naccent = \"#8e7dff\"\nglow = [\"#8e7dff\", \"#4fd2ff\", \"#ffffff\"]\n\n[glass]\nblur = 40\nopacity = 0.45\nradius = 26\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Bricolage Grotesque\"\nlyrics_size = 50\n\n[glow]\nenabled = true\nthickness = 70\nintensity = 1\nbeat_reactivity = 0.6\ndrift_speed = 0.9\neffect = \"orbit\"\neffect_speed = 0.6\neffect_strength = 1\nreverse_motion = false\nparticles = \"stars\"\nparticle_density = 0.5\nparticle_size = 0.8\nparticle_speed = 0.4\nparticle_sparkle = 0.9\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"center\"\nshow_on_desktop = true\n",
+      "sample": "Circling the dark side",
+      "fresh": true
+    },
+    {
+      "id": "campfire",
+      "kind": "theme",
+      "name": "Campfire",
+      "author": "Glowtune",
+      "description": "Flickering amber with sparks climbing off the edge. Pull a chair closer.",
+      "colors": [
+        "#ff8a3d",
+        "#ffcf6b",
+        "#d6452f"
+      ],
+      "tags": [
+        "warm",
+        "cosy"
+      ],
+      "toml": "[meta]\nname = \"Campfire\"\nauthor = \"Glowtune\"\nversion = 1\n\n[colors]\nmode = \"gradient\"\nbackground = \"#170b06\"\nsurface = \"#ffffff18\"\ntext = \"#fff1e0\"\naccent = \"#ff8a3d\"\nglow = [\"#ff8a3d\", \"#ffcf6b\", \"#d6452f\"]\n\n[glass]\nblur = 30\nopacity = 0.65\nradius = 20\n\n[font]\nfamily = \"Instrument Sans\"\nlyrics_family = \"Georgia\"\nlyrics_size = 50\n\n[glow]\nenabled = true\nthickness = 76\nintensity = 1.15\nbeat_reactivity = 0.6\ndrift_speed = 1\neffect = \"lava-lamp\"\neffect_speed = 1.2\neffect_strength = 1\nreverse_motion = false\nparticles = \"embers\"\nparticle_density = 0.55\nparticle_size = 1\nparticle_speed = 1.3\nparticle_sparkle = 0.7\ncorners = \"rounded\"\nmonitors = \"all\"\n\n[lyrics]\nstyle = \"rise\"\nposition = \"bottom-center\"\nshow_on_desktop = true\n",
+      "sample": "Gather round the sparks",
+      "fresh": true
     },
     {
       "id": "cinema",
       "kind": "preset",
       "name": "Cinema",
       "author": "Glowtune",
-      "description": "Let the video fill the room. Floating words, a quiet clock.",
+      "description": "Let the music video fill the room. Floating words, a quiet clock and a thin line of a dock.",
       "colors": [
         "#b98bdf",
         "#79adcc"
@@ -151,25 +234,24 @@
         "immersive"
       ],
       "settings": {
+        "stageWallpaper": "video",
         "stageLyricsStyle": "flow",
         "stageClockStyle": "minimal",
-        "stageWallpaper": "video",
+        "stageArtStyle": "tilt",
+        "stageDockStyle": "line",
         "stageMotion": true,
         "stageClock": true,
         "stageRecent": false,
-        "artworkColors": true,
-        "customColors": [
-          "#b98bdf",
-          "#79adcc"
-        ]
-      }
+        "artworkColors": true
+      },
+      "sample": "Roll the picture"
     },
     {
       "id": "poster",
       "kind": "preset",
       "name": "Poster",
       "author": "Glowtune",
-      "description": "Big cut-out words and a solid clock in ink and coral.",
+      "description": "Big cut-out words on a printed cover, in ink and coral. Pasted up on the street.",
       "colors": [
         "#ff936f",
         "#818eff"
@@ -179,9 +261,11 @@
         "bold"
       ],
       "settings": {
+        "stageWallpaper": "cover",
         "stageLyricsStyle": "sticker",
         "stageClockStyle": "solid",
-        "stageWallpaper": "art",
+        "stageArtStyle": "print",
+        "stageDockStyle": "islands",
         "stageMotion": false,
         "stageClock": true,
         "stageRecent": true,
@@ -190,14 +274,15 @@
           "#ff936f",
           "#818eff"
         ]
-      }
+      },
+      "sample": "Say it loud"
     },
     {
       "id": "slow-sunday",
       "kind": "preset",
       "name": "Slow Sunday",
       "author": "Glowtune",
-      "description": "A still artwork wash, soft karaoke and nowhere to rush.",
+      "description": "Soft silk, gentle karaoke and nowhere to rush.",
       "colors": [
         "#dab58b",
         "#a3b49a"
@@ -207,9 +292,11 @@
         "warm"
       ],
       "settings": {
+        "stageWallpaper": "silk",
         "stageLyricsStyle": "karaoke",
         "stageClockStyle": "minimal",
-        "stageWallpaper": "art",
+        "stageArtStyle": "print",
+        "stageDockStyle": "pill",
         "stageMotion": false,
         "stageClock": true,
         "stageRecent": false,
@@ -218,14 +305,15 @@
           "#dab58b",
           "#a3b49a"
         ]
-      }
+      },
+      "sample": "Nowhere to be today"
     },
     {
       "id": "night-drive",
       "kind": "preset",
       "name": "Night drive",
       "author": "Glowtune",
-      "description": "Outline lettering over drifting cobalt and cherry light.",
+      "description": "Outline lettering over drifting cobalt and cherry light, with headlights racing round the edge.",
       "colors": [
         "#558aff",
         "#fa668a"
@@ -235,9 +323,11 @@
         "motion"
       ],
       "settings": {
+        "stageWallpaper": "art",
         "stageLyricsStyle": "outline",
         "stageClockStyle": "outline",
-        "stageWallpaper": "art",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "line",
         "stageMotion": true,
         "stageClock": true,
         "stageRecent": true,
@@ -245,15 +335,17 @@
         "customColors": [
           "#558aff",
           "#fa668a"
-        ]
-      }
+        ],
+        "glowEffect": "comet"
+      },
+      "sample": "Headlights on the hill"
     },
     {
       "id": "liner-notes",
       "kind": "preset",
       "name": "Liner notes",
       "author": "Glowtune",
-      "description": "Just the words and the artwork. No clock, no distractions.",
+      "description": "Just the words and the cover. No clock, no distractions.",
       "colors": [
         "#b9cad7",
         "#8493a6"
@@ -263,25 +355,24 @@
         "lyrics"
       ],
       "settings": {
+        "stageWallpaper": "cover",
         "stageLyricsStyle": "flow",
         "stageClockStyle": "minimal",
-        "stageWallpaper": "art",
+        "stageArtStyle": "tilt",
+        "stageDockStyle": "pill",
         "stageMotion": false,
         "stageClock": false,
         "stageRecent": false,
-        "artworkColors": true,
-        "customColors": [
-          "#b9cad7",
-          "#8493a6"
-        ]
-      }
+        "artworkColors": true
+      },
+      "sample": "Read along with me"
     },
     {
       "id": "front-row",
       "kind": "preset",
       "name": "Front row",
       "author": "Glowtune",
-      "description": "Bold words on the music video. Bring the performance home.",
+      "description": "Bold words over the music video, with emoji bursting off the big lines. Bring the show home.",
       "colors": [
         "#e6e88b",
         "#ea7fa9"
@@ -291,18 +382,362 @@
         "video"
       ],
       "settings": {
+        "stageWallpaper": "video",
         "stageLyricsStyle": "bold",
         "stageClockStyle": "solid",
-        "stageWallpaper": "video",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "bar",
+        "stageEmoji": true,
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": true
+      },
+      "sample": "Hands up in the front row"
+    },
+    {
+      "id": "constellation",
+      "kind": "preset",
+      "name": "Constellation",
+      "author": "Glowtune",
+      "description": "Every sung word lights up as a star and joins the last, until the line draws its own constellation. The record spins and the edge fills with stars.",
+      "colors": [
+        "#9fb4ff",
+        "#f3d9a4"
+      ],
+      "tags": [
+        "stars",
+        "lyrics"
+      ],
+      "settings": {
+        "stageWallpaper": "art",
+        "stageLyricsStyle": "stars",
+        "desktopLyricsStyle": "stars",
+        "stageClockStyle": "outline",
+        "stageArtStyle": "vinyl",
+        "stageDockStyle": "line",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "glowParticles": "stars"
+      },
+      "sample": "Join the dots back to you",
+      "fresh": true
+    },
+    {
+      "id": "rainy-window",
+      "kind": "preset",
+      "name": "Rainy window",
+      "author": "Glowtune",
+      "description": "Water runs down over the cover and the words fall like rain. Wipe the glass clear with your mouse.",
+      "colors": [
+        "#8fb3c9",
+        "#5d7f9a"
+      ],
+      "tags": [
+        "rain",
+        "calm"
+      ],
+      "settings": {
+        "stageWallpaper": "water",
+        "stageLyricsStyle": "rain",
+        "desktopLyricsStyle": "rain",
+        "stageBeat": true,
+        "stageClockStyle": "minimal",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "pill",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "glowEffect": "tide"
+      },
+      "sample": "Rain on the window again",
+      "fresh": true
+    },
+    {
+      "id": "frosted",
+      "kind": "preset",
+      "name": "Frosted",
+      "author": "Glowtune",
+      "description": "The cover fogs over like a cold window and flashes on the kick. Snow drifts round the edge.",
+      "colors": [
+        "#cfe6ff",
+        "#9db7e8"
+      ],
+      "tags": [
+        "winter",
+        "beat"
+      ],
+      "settings": {
+        "stageWallpaper": "frost",
+        "stageLyricsStyle": "depth",
+        "stageBeat": true,
+        "stageClockStyle": "solid",
+        "stageArtStyle": "tilt",
+        "stageDockStyle": "islands",
         "stageMotion": true,
         "stageClock": true,
         "stageRecent": true,
         "artworkColors": true,
+        "glowEffect": "aurora",
+        "glowParticles": "snow"
+      },
+      "sample": "Draw a heart in the glass",
+      "fresh": true
+    },
+    {
+      "id": "record-store",
+      "kind": "preset",
+      "name": "Record store",
+      "author": "Glowtune",
+      "description": "The cover spins as the record on a tiled wall of colour, with dust in the light. Flip through the crates.",
+      "colors": [
+        "#e7b46a",
+        "#c4553e"
+      ],
+      "tags": [
+        "vinyl",
+        "warm"
+      ],
+      "settings": {
+        "stageWallpaper": "mosaic",
+        "stageLyricsStyle": "karaoke",
+        "stageBeat": true,
+        "stageClockStyle": "solid",
+        "stageArtStyle": "vinyl",
+        "stageDockStyle": "bar",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": true,
+        "glowParticles": "dust"
+      },
+      "sample": "Flip it over to side B",
+      "fresh": true
+    },
+    {
+      "id": "planetarium",
+      "kind": "preset",
+      "name": "Planetarium",
+      "author": "Glowtune",
+      "description": "Words orbit the middle of the screen while a swell of light circles the edge. Lights out, look up.",
+      "colors": [
+        "#7f8cff",
+        "#47d6c7"
+      ],
+      "tags": [
+        "space",
+        "dreamy"
+      ],
+      "settings": {
+        "stageWallpaper": "silk",
+        "stageLyricsStyle": "orbit",
+        "stageClockStyle": "minimal",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "line",
+        "stageMotion": true,
+        "stageClock": false,
+        "stageRecent": false,
+        "artworkColors": false,
         "customColors": [
-          "#e6e88b",
-          "#ea7fa9"
-        ]
-      }
+          "#7f8cff",
+          "#47d6c7",
+          "#c48bff"
+        ],
+        "glowEffect": "orbit",
+        "glowParticles": "fireflies"
+      },
+      "sample": "Lights out, look up",
+      "fresh": true
+    },
+    {
+      "id": "basement-show",
+      "kind": "preset",
+      "name": "Basement show",
+      "author": "Glowtune",
+      "description": "Printed dots that swell on every kick, loud words, emoji and an equalizer round the edge. Turn it up.",
+      "colors": [
+        "#d5ff46",
+        "#ff4aa2"
+      ],
+      "tags": [
+        "club",
+        "beat"
+      ],
+      "settings": {
+        "stageWallpaper": "halftone",
+        "stageLyricsStyle": "bold",
+        "stageEmoji": true,
+        "stageBeat": true,
+        "stageClockStyle": "solid",
+        "stageArtStyle": "print",
+        "stageDockStyle": "islands",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": false,
+        "customColors": [
+          "#d5ff46",
+          "#ff4aa2"
+        ],
+        "glowEffect": "bars"
+      },
+      "sample": "Louder in the basement",
+      "fresh": true
+    },
+    {
+      "id": "after-credits",
+      "kind": "preset",
+      "name": "After credits",
+      "author": "Glowtune",
+      "description": "A field of dots in the song's colours, breathing slowly. Every kick drum sends a ring out across it, like the Glowtune film.",
+      "colors": [
+        "#e2ac6a",
+        "#3dd9c4"
+      ],
+      "tags": [
+        "dots",
+        "beat"
+      ],
+      "settings": {
+        "stageWallpaper": "dots",
+        "stageLyricsStyle": "flow",
+        "stageBeat": true,
+        "stageClockStyle": "outline",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "pill",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true
+      },
+      "sample": "Stay through the credits",
+      "fresh": true
+    },
+    {
+      "id": "broken-glass",
+      "kind": "preset",
+      "name": "Broken glass",
+      "author": "Glowtune",
+      "description": "Every letter flies in as sharp slivers and snaps together on the word, over a cover printed in dots. Glass breaking backwards.",
+      "colors": [
+        "#ff5fa2",
+        "#b6ff3d"
+      ],
+      "tags": [
+        "shards",
+        "bold"
+      ],
+      "settings": {
+        "stageWallpaper": "halftone",
+        "stageLyricsStyle": "shards",
+        "desktopLyricsStyle": "shards",
+        "stageBeat": true,
+        "stageClockStyle": "solid",
+        "stageArtStyle": "print",
+        "stageDockStyle": "line",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "glowEffect": "distortion"
+      },
+      "sample": "Pick up the pieces",
+      "fresh": true
+    },
+    {
+      "id": "price-tag",
+      "kind": "preset",
+      "name": "Price tag",
+      "author": "Glowtune",
+      "description": "The words hang on swinging white tags and roll like a counter onto every word. A shop window for your songs.",
+      "colors": [
+        "#ff4fa3",
+        "#ffd0e6"
+      ],
+      "tags": [
+        "tags",
+        "playful"
+      ],
+      "settings": {
+        "stageWallpaper": "cover",
+        "stageLyricsStyle": "tags",
+        "stageClockStyle": "minimal",
+        "stageArtStyle": "tilt",
+        "stageDockStyle": "islands",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": true,
+        "artworkColors": true,
+        "glowEffect": "pulse",
+        "glowParticles": "dots"
+      },
+      "sample": "Hang on to this one",
+      "fresh": true
+    },
+    {
+      "id": "decoder",
+      "kind": "preset",
+      "name": "Decoder",
+      "author": "Glowtune",
+      "description": "Each line waits as a row of glowing dots and decodes letter by letter as it's sung, over a field of dots that ripples on the beat.",
+      "colors": [
+        "#ffd23d",
+        "#5ee7ff"
+      ],
+      "tags": [
+        "code",
+        "dots"
+      ],
+      "settings": {
+        "stageWallpaper": "dots",
+        "stageLyricsStyle": "code",
+        "desktopLyricsStyle": "code",
+        "stageBeat": true,
+        "stageClockStyle": "outline",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "line",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "glowEffect": "neon"
+      },
+      "sample": "Read me like a signal",
+      "fresh": true
+    },
+    {
+      "id": "wet-paint",
+      "kind": "preset",
+      "name": "Wet paint",
+      "author": "Glowtune",
+      "description": "Words are brushed on in streaks of colour and run down the screen like wet paint, while water runs over the cover.",
+      "colors": [
+        "#b6ff3d",
+        "#ff5fa2"
+      ],
+      "tags": [
+        "melt",
+        "rain"
+      ],
+      "settings": {
+        "stageWallpaper": "water",
+        "stageLyricsStyle": "melt",
+        "desktopLyricsStyle": "melt",
+        "stageBeat": true,
+        "stageClockStyle": "minimal",
+        "stageArtStyle": "glow",
+        "stageDockStyle": "pill",
+        "stageMotion": true,
+        "stageClock": true,
+        "stageRecent": false,
+        "artworkColors": true,
+        "glowEffect": "tide"
+      },
+      "sample": "Still drying on the wall",
+      "fresh": true
     }
   ]
 }
