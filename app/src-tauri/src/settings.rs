@@ -106,6 +106,12 @@ pub struct Settings {
     pub listening_history: bool,
     /// Your saved scene looks (see `presets`), at most 9.
     pub scene_presets: Vec<crate::presets::ScenePreset>,
+    /// Look for a new Glowtune version at start and every 6 hours (GitHub
+    /// installs only; the Store updates its own copy). See `update`.
+    pub update_check: bool,
+    /// A version the user chose to skip: no pop-up for it. Set only by
+    /// `update::skip_update`, so a window's stale copy can't undo it.
+    pub skipped_update: String,
 }
 
 impl Default for Settings {
@@ -157,6 +163,8 @@ impl Default for Settings {
             hotkeys: true,
             listening_history: true,
             scene_presets: Vec::new(),
+            update_check: true,
+            skipped_update: String::new(),
         }
     }
 }
@@ -448,5 +456,29 @@ mod color_tests {
         }
         .sanitized();
         assert_eq!(empty.custom_colors, Settings::default().custom_colors);
+    }
+}
+
+#[cfg(test)]
+mod update_tests {
+    use super::*;
+
+    #[test]
+    fn old_files_check_for_updates_and_skip_nothing() {
+        let s: Settings = serde_json::from_str(r#"{"blockAds": true}"#).unwrap();
+        assert!(s.update_check, "updates are on for everyone who had 0.3");
+        assert_eq!(s.skipped_update, "");
+    }
+
+    #[test]
+    fn update_choices_survive_a_save() {
+        let s = Settings {
+            update_check: false,
+            skipped_update: "0.4.0".into(),
+            ..Default::default()
+        };
+        let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
+        assert!(!back.update_check);
+        assert_eq!(back.skipped_update, "0.4.0");
     }
 }

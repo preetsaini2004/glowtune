@@ -12,7 +12,7 @@ shows synced lyrics, and turns your desktop into a live music scene.
 
 <sub>▶ Watch the 0.2 launch film (75 s): <a href="../../releases/latest">glowtune-0.2-hero.mp4</a> on the latest release.</sub>
 
-[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-03) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
+[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-04) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
 
 </div>
 
@@ -21,6 +21,16 @@ shows synced lyrics, and turns your desktop into a live music scene.
 > **🔊 Volume tip.** Turn the volume **all the way up inside Spotify, YouTube Music or SoundCloud**, then set how loud you want it with **Glowtune's** volume (the dock, mini player or Ctrl+Alt+↑/↓). With Automix, Crossfade or the Equalizer on, Glowtune's volume and the service's own slider are separate and don't follow each other, so a low service slider makes everything quieter.
 
 ---
+
+## What's new in 0.4
+
+### 🔄 Glowtune updates itself
+This is the last version you need to download by hand.
+- When a new version is out, a small card appears in the corner of your screen with what's new. Press **Update now**: Glowtune downloads it, installs it and restarts in a few seconds, keeping your settings, themes and sign-ins.
+- **Later** and **Skip this version** are there too. It never pops up over a full-screen game, and nothing installs without your click.
+- Glowtune checks when it starts and every 6 hours. Check yourself, or turn checking off, in **Settings › About**.
+- Every update is signed, and Glowtune refuses anything that isn't signed by us.
+- The Microsoft Store version keeps updating through the Store.
 
 ## What's new in 0.3
 
@@ -193,7 +203,7 @@ Switch the whole look in one click, or make your own theme as a small text file.
 Windows shows this for new downloads that haven't built up a reputation with Microsoft yet. It isn't a virus warning. To be sure the file is the one we published, compare its fingerprint with the `SHA256SUMS.txt` on the release page:
 
 ```powershell
-Get-FileHash .\Glowtune_0.2.0_x64-setup.exe
+Get-FileHash .\Glowtune_0.4.0_x64-setup.exe
 ```
 
 If they match, click **More info → Run anyway**. Never turn off Microsoft Defender for any app.

@@ -12,6 +12,8 @@
   import ThemeEditor from "$lib/ThemeEditor.svelte";
   import Store from "$lib/Store.svelte";
   import SoundControls, { type SoundSettings } from "$lib/SoundControls.svelte";
+  import ReleaseNotes from "$lib/ReleaseNotes.svelte";
+  import { updates, ago, releaseDay } from "$lib/update.svelte";
 
   type Settings = {
     glowEnabled: boolean;
@@ -38,6 +40,7 @@
     stageLyricsStyle: string;
     hotkeys: boolean;
     listeningHistory: boolean;
+    updateCheck: boolean;
   } & SoundSettings;
   type Top = { title: string; artist: string; plays: number; ms: number };
   type Stats = {
@@ -67,7 +70,7 @@
     { id: "player", name: "Player", icon: "M4 15h16v5H4zM8 4v8M16 4v8", words: "player mini on top" },
     { id: "listening", name: "Listening", icon: "M4 20V10M9 20V4M14 20v-7M19 20v-11", words: "listening stats history wrapped top songs artists hours played" },
     { id: "keys", name: "Hotkeys", icon: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10", words: "hotkeys shortcuts keyboard keys play pause next volume presets sleep timer" },
-    { id: "about", name: "About", icon: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01", words: "about version" },
+    { id: "about", name: "About", icon: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01", words: "about version update updates new version upgrade check for updates release notes" },
   ];
   const SERVICES = [
     { id: "spotify", name: "Spotify", note: "Free or Premium. Free plays with Spotify's ads." },
@@ -192,6 +195,7 @@
     if (tab === "theme") section = "themes";
     else if (tab && SECTIONS.some((x) => x.id === tab)) section = tab as SectionId;
     np.start();
+    updates.start();
     invoke<Settings>("get_settings").then((v) => (s = v));
     invoke<Monitor[]>("list_monitors").then((m) => (monitors = m));
     invoke<LyricsInfo>("get_lyrics").then((l) => (lyrics = l));
@@ -745,6 +749,81 @@
             <p class="hint">Version {version || "…"}</p>
             <p class="hint">Follows whatever you play, lights your screen in its colors, and shows the lyrics. Lyrics from LRCLIB; artwork from the iTunes catalog.</p>
           </div>
+          {@const u = updates.view}
+          {#if u?.channel === "store"}
+            <div class="card">
+              <h3>Updates</h3>
+              <p class="hint">This copy comes from the Microsoft Store, which keeps it up to date.</p>
+            </div>
+          {:else if u?.channel === "manual"}
+            <div class="card">
+              <div class="row">
+                <div>
+                  <h3>Updates</h3>
+                  <p class="hint">This copy wasn't installed with the Glowtune installer, so it can't update itself. New versions are on GitHub.</p>
+                </div>
+                <button class="open" onclick={() => invoke("open_support", { to: "releases" })}>Releases</button>
+              </div>
+            </div>
+          {:else if u}
+            <div class="card updates" class:ready={u.status === "available" || u.status === "downloading" || u.status === "installing"}>
+              <div class="row">
+                <div>
+                  {#if u.status === "available" || u.status === "downloading" || u.status === "installing"}
+                    <h3>Glowtune {u.version} is ready</h3>
+                    <p class="hint">{[`You have ${u.current}`, releaseDay(u.date) && `released ${releaseDay(u.date)}`].filter(Boolean).join(" · ")}</p>
+                  {:else if u.status === "checking"}
+                    <h3>Checking for updates…</h3>
+                  {:else if u.status === "latest"}
+                    <h3>You're up to date</h3>
+                    <p class="hint">Last checked {ago(u.checkedAt)}.</p>
+                  {:else if u.status === "error"}
+                    <h3>Updates</h3>
+                    <p class="hint warn">{u.error}</p>
+                  {:else}
+                    <h3>Updates</h3>
+                    <p class="hint">New versions install with one click, and your settings and sign-ins stay.</p>
+                  {/if}
+                </div>
+                {#if u.status === "available" || (u.status === "error" && u.version)}
+                  <button class="open primary" onclick={() => updates.install()}>
+                    {u.status === "error" ? "Try again" : "Update now"}
+                  </button>
+                {:else if u.status !== "downloading" && u.status !== "installing"}
+                  <button class="open" disabled={u.status === "checking"} onclick={() => updates.check()}>Check for updates</button>
+                {/if}
+              </div>
+              {#if u.status === "downloading" || u.status === "installing"}
+                <div class="progress" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round((u.progress ?? 0) * 100)}>
+                  <span style:width="{u.status === 'installing' ? 100 : Math.round((u.progress ?? 0) * 100)}%"></span>
+                </div>
+                <p class="hint small">
+                  {u.status === "installing" ? "Restarting Glowtune…" : `Downloading… ${Math.round((u.progress ?? 0) * 100)}%`}
+                </p>
+              {/if}
+              {#if u.version && u.status !== "latest"}
+                <div class="whatsnew">
+                  <ReleaseNotes notes={u.notes} />
+                </div>
+                {#if u.status === "available"}
+                  <button class="link" onclick={() => updates.skip(u.version!)}>Skip this version</button>
+                {/if}
+              {/if}
+              {#if s}
+                <div class="row">
+                  <div>
+                    <h3 class="sub">Check automatically</h3>
+                    <p class="hint">When Glowtune starts and every 6 hours. It only asks GitHub for the newest version number.</p>
+                  </div>
+                  <label class="switch">
+                    <input type="checkbox" bind:checked={s.updateCheck} onchange={commit} />
+                    <span aria-hidden="true"></span>
+                    <span class="sr">Check for updates automatically</span>
+                  </label>
+                </div>
+              {/if}
+            </div>
+          {/if}
           <div class="card early">
             <h3>Early build</h3>
             <p class="hint">Glowtune is new and still has bugs. Some features may glitch, and Apple Music and SoundCloud are barely tested.</p>
@@ -1099,6 +1178,55 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
+  }
+  .updates.ready {
+    border-color: color-mix(in oklab, var(--c1) 45%, transparent);
+    background:
+      radial-gradient(120% 90% at 0% 0%, color-mix(in oklab, var(--c1) 14%, transparent), transparent 70%),
+      rgba(255, 255, 255, 0.04);
+  }
+  .updates .progress {
+    height: 6px;
+    border-radius: 3px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .updates .progress span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: linear-gradient(90deg, var(--c1), var(--c2));
+    transition: width 240ms ease;
+  }
+  .whatsnew {
+    max-height: 220px;
+    overflow-y: auto;
+    padding: 10px 12px;
+    border-radius: calc(var(--radius) * 0.7);
+    background: rgba(0, 0, 0, 0.16);
+  }
+  .open.primary {
+    border-color: transparent;
+    background: linear-gradient(135deg, var(--c1), color-mix(in oklab, var(--c2) 80%, var(--c1)));
+    color: #fff;
+    font-weight: 620;
+  }
+  .open:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+  .link {
+    justify-self: start;
+    padding: 0;
+    border: 0;
+    background: none;
+    font-size: 12.5px;
+    color: var(--ink-faint);
+    cursor: pointer;
+  }
+  .link:hover {
+    color: var(--ink-soft);
+    text-decoration: underline;
   }
   .early {
     border-color: color-mix(in oklab, #ffb13d 40%, transparent);

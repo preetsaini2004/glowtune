@@ -32,6 +32,7 @@ mod taskbar;
 mod theme_service;
 #[cfg(windows)]
 mod thumbbar;
+mod update;
 
 use std::borrow::Cow;
 use std::path::PathBuf;
@@ -156,12 +157,13 @@ struct MonitorView {
     height: u32,
 }
 
-/// Where to report bugs (Settings → About). Only these two, never a page's URL.
+/// Where to report bugs, and the releases page (Settings → About). Only these, never a page's URL.
 #[tauri::command]
 fn open_support(to: String) -> Result<(), String> {
     let url = match to.as_str() {
         "issues" => "https://github.com/preetsaini2004/glowtune/issues/new",
         "email" => "mailto:Preet.saini.0@outlook.com?subject=Glowtune%20bug",
+        "releases" => "https://github.com/preetsaini2004/glowtune/releases/latest",
         _ => return Err("unknown link".into()),
     };
     std::process::Command::new("rundll32")
@@ -232,6 +234,7 @@ async fn set_settings(new: Settings, app: AppHandle) -> Result<Settings, String>
 fn keep_owned(mut new: Settings, current: &Settings) -> Settings {
     new.active_theme.clone_from(&current.active_theme);
     new.scene_presets.clone_from(&current.scene_presets);
+    new.skipped_update.clone_from(&current.skipped_update);
     new
 }
 
@@ -1191,6 +1194,7 @@ pub fn run() {
             }
         }))
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .register_uri_scheme_protocol("glowart", |ctx, request| {
             art_response(ctx.app_handle(), &request)
         })
@@ -1227,6 +1231,12 @@ pub fn run() {
             presets::apply_scene_preset,
             glow::want_kicks,
             open_support,
+            update::update_status,
+            update::check_update,
+            update::install_update,
+            update::skip_update,
+            update::dismiss_update,
+            update::update_details,
             hotkeys::hotkey_list,
             sleep::set_sleep_timer,
             sleep::get_sleep_timer,
@@ -1264,6 +1274,7 @@ pub fn run() {
                 app.path().app_data_dir()?.join("listening.jsonl"),
             ));
             app.manage(osd::LastToast::default());
+            app.manage(update::Updates::new(app.package_info().version.to_string()));
             let path = app.path().app_config_dir()?.join("settings.json");
             let settings = Settings::load(&path);
             app.manage(sound::Sound::new(app.handle().clone(), &settings));
@@ -1310,6 +1321,7 @@ pub fn run() {
             });
             build_tray(app.handle())?;
             hotkeys::start(app.handle(), current_settings(app.handle()).hotkeys);
+            update::start(app.handle());
             show_player(app.handle())?;
             let taskbar_side = app
                 .state::<AppSettings>()
@@ -1386,5 +1398,15 @@ mod tests {
         assert_eq!(kept.active_theme, "my-theme");
         assert_eq!(kept.scene_presets.len(), 1);
         assert_eq!(kept.stage_wallpaper, "dots");
+    }
+
+    #[test]
+    fn a_stale_window_cannot_undo_skip_this_version() {
+        let current = Settings {
+            skipped_update: "0.4.0".into(),
+            ..Default::default()
+        };
+        let kept = keep_owned(Settings::default(), &current);
+        assert_eq!(kept.skipped_update, "0.4.0");
     }
 }

@@ -39,6 +39,7 @@
 | The music service you open: **open.spotify.com**, **music.apple.com**, **music.youtube.com**, **soundcloud.com** (and SoundCloud's own API for autoplay suggestions) | Whatever that service's page sends | Same as using the service in a browser. Their own privacy policies apply. |
 | **youtube-nocookie.com** | The video being shown | Music-video backgrounds on the desktop scene. YouTube's privacy-enhanced mode. |
 | **easylist.to**, **ublockorigin.github.io** | Nothing about you (a plain file download) | Up-to-date ad-block filter lists |
+| **github.com** (Glowtune's own releases page) | Nothing about you (a plain file download). Not in the Microsoft Store copy, which the Store updates. | To see if a new Glowtune version is out: when Glowtune starts and every 6 hours (switch off in Settings → About). If you press **Update now**, the new installer comes from the same place. |
 | A Store catalog address, **only if you add one** in Settings → Store | Nothing about you (a plain file download) | Extra themes |
 
 That's the complete list. Glowtune has no server of its own, and nothing is sent to its developers.

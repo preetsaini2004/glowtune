@@ -1,4 +1,5 @@
 # Builds the Windows installer from a version tag (git tag v0.1.0 && git push --tags)
+# with its update signature and latest.json (in-app updates, see below)
 # (the Check workflow already tests every push to main)
 # and attaches it, with its SHA-256, to a DRAFT release. Publish the draft by hand
 # after testing the installer.
@@ -35,25 +36,61 @@ jobs:
           cache: pnpm
           cache-dependency-path: app/pnpm-lock.yaml
 
-      - name: Build the installer
+      # In-app updates: every install checks
+      # releases/latest/download/latest.json and only installs an installer
+      # signed with Glowtune's update key. Secrets (repo Settings → Secrets
+      # and variables → Actions): TAURI_SIGNING_PRIVATE_KEY (the key file's
+      # contents) and TAURI_SIGNING_PRIVATE_KEY_PASSWORD.
+      - name: Check the version and the update key
         shell: bash
         run: |
-          cd app
-          pnpm tauri build
+          version=$(node -p "require('./app/src-tauri/tauri.conf.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME doesn't match the app version $version (bump tauri.conf.json, Cargo.toml and package.json)"
+            exit 1
+          fi
+          pubkey=$(node -p "require('./app/src-tauri/tauri.conf.json').plugins.updater.pubkey")
+          if [ -z "$pubkey" ]; then
+            echo "::error::plugins.updater.pubkey is empty in tauri.conf.json: installed copies couldn't verify this update"
+            exit 1
+          fi
+          echo "VERSION=$version" >> "$GITHUB_ENV"
 
-      - name: Checksums
+      - name: Build the installer
+        shell: bash
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          cd app
+          # The overlay also writes the installer's update signature (.sig).
+          pnpm tauri build --config src-tauri/tauri.updater.conf.json
+
+      - name: Checksums and update manifest
         shell: bash
         run: |
           cd target/release/bundle/nsis
+          exe="Glowtune_${VERSION}_x64-setup.exe"
+          test -f "$exe" && test -s "$exe.sig"
           sha256sum *.exe > SHA256SUMS.txt
           cat SHA256SUMS.txt
+          node "$GITHUB_WORKSPACE/scripts/latest-json.mjs" "$VERSION" "$exe.sig" \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/$GITHUB_REF_NAME/$exe" \
+            "$GITHUB_WORKSPACE/docs/release-notes-$VERSION.md" > latest.json
+          cat latest.json
 
+      # A draft is invisible to installed copies: releases/latest/ only
+      # points at the published Latest release. Test the installer, then
+      # publish the draft as Latest and every Glowtune offers the update.
       - name: Draft release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          cd target/release/bundle/nsis
           gh release create "$GITHUB_REF_NAME" \
-            target/release/bundle/nsis/*.exe \
-            target/release/bundle/nsis/SHA256SUMS.txt \
-            --draft --title "Glowtune ${GITHUB_REF_NAME#v}" --generate-notes
+            "Glowtune_${VERSION}_x64-setup.exe" \
+            "Glowtune_${VERSION}_x64-setup.exe.sig" \
+            latest.json \
+            SHA256SUMS.txt \
+            --draft --title "Glowtune $VERSION" --generate-notes
