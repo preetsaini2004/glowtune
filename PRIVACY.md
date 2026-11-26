@@ -30,6 +30,10 @@
 - Only the sound of Glowtune's own service windows is touched, never other apps.
 - While effects are on, Windows shows the service window's own volume as almost zero. That is expected: the sound you hear comes from Glowtune. Turning effects off puts it back.
 
+**Lyrics timing:** when a song starts in another app (Spotify, your browser), Glowtune listens to that app's sound for its first few seconds, to hear where the singer comes in and line the lyrics up.
+- It measures in memory and stops once it knows.
+- Nothing is recorded, saved or sent anywhere, and the app's sound isn't changed.
+
 ## What goes online, and why
 
 | Where to | What is sent | Why |
@@ -40,9 +44,10 @@
 | **youtube-nocookie.com** | The video being shown | Music-video backgrounds on the desktop scene. YouTube's privacy-enhanced mode. |
 | **easylist.to**, **ublockorigin.github.io** | Nothing about you (a plain file download) | Up-to-date ad-block filter lists |
 | **github.com** (Glowtune's own releases page) | Nothing about you (a plain file download). Not in the Microsoft Store copy, which the Store updates. | To see if a new Glowtune version is out: when Glowtune starts and every 6 hours (switch off in Settings → About). If you press **Update now**, the new installer comes from the same place. |
+| **api.web3forms.com**, **only when you press Send** in Settings → Feedback | What you wrote (your name or nickname, kind, part of Glowtune, title, message, and for a review whether it may be shown on Glowtune's website), your email if you typed one, and, if "Include app info" is on: Glowtune's version and where it was installed from, your Windows version, which music app is playing, and which features are on (glow, desktop lyrics, scene, sound effects). Settings shows the exact list before you send. | So your message reaches the developer. Web3Forms passes it on by email. Never your songs, history or anything else. |
 | A Store catalog address, **only if you add one** in Settings → Store | Nothing about you (a plain file download) | Extra themes |
 
-That's the complete list. Glowtune has no server of its own, and nothing is sent to its developers.
+That's the complete list. Glowtune has no server of its own, and nothing is sent to its developers unless you send feedback yourself.
 
 The source code is public: you can check every network call yourself (`git grep -nE "https?://"`), or watch the app's traffic with any network monitor.
 

@@ -10,12 +10,15 @@
 
 mod adblock;
 mod card;
+mod feedback;
 mod foreground;
 mod glow;
 mod hires;
 mod hotkeys;
 mod hub;
 mod lyrics_gate;
+#[cfg(windows)]
+mod lyrics_listen;
 mod lyrics_service;
 mod music_browser;
 mod osd;
@@ -164,6 +167,7 @@ fn open_support(to: String) -> Result<(), String> {
         "issues" => "https://github.com/preetsaini2004/glowtune/issues/new",
         "email" => "mailto:Preet.saini.0@outlook.com?subject=Glowtune%20bug",
         "releases" => "https://github.com/preetsaini2004/glowtune/releases/latest",
+        "rate" => "ms-windows-store://review/?ProductId=9NGDWTHP2QGW",
         _ => return Err("unknown link".into()),
     };
     std::process::Command::new("rundll32")
@@ -235,6 +239,8 @@ fn keep_owned(mut new: Settings, current: &Settings) -> Settings {
     new.active_theme.clone_from(&current.active_theme);
     new.scene_presets.clone_from(&current.scene_presets);
     new.skipped_update.clone_from(&current.skipped_update);
+    new.hints_seen.clone_from(&current.hints_seen);
+    new.last_seen_version.clone_from(&current.last_seen_version);
     new
 }
 
@@ -244,8 +250,17 @@ fn save_settings(new: Settings, app: &AppHandle) -> Result<Settings, String> {
     let state = app.state::<AppSettings>();
     new.save(&state.path)
         .map_err(|e| format!("could not save settings: {e}"))?;
-    if let Ok(mut cur) = state.current.lock() {
-        *cur = new.clone();
+    let lyrics_changed = match state.current.lock() {
+        Ok(mut cur) => {
+            let changed = cur.lyrics_differ(&new);
+            *cur = new.clone();
+            changed
+        }
+        Err(_) => false,
+    };
+    // Lyrics choices ride on the theme: send it again now that they're stored.
+    if lyrics_changed {
+        apply_theme(app, &app.state::<Arc<ThemeService>>().current());
     }
     let _ = app.emit("settings", &new);
     Ok(new)
@@ -351,20 +366,30 @@ fn export_theme(
     themes.export(&id, &path)
 }
 
+/// The theme as the windows show it: the active theme with your lyrics
+/// choices (Settings → Lyrics) on top. The theme editor uses `get_theme`
+/// instead, so saving a theme never bakes those choices into it.
+#[tauri::command]
+fn get_shown_theme(app: AppHandle) -> themes::Theme {
+    shown_theme(&app, app.state::<Arc<ThemeService>>().current())
+}
+
+fn shown_theme(app: &AppHandle, mut theme: themes::Theme) -> themes::Theme {
+    current_settings(app).lyrics_over(&mut theme);
+    theme
+}
+
 /// Shows a theme everywhere: CSS in all windows, the glow, lyrics placement.
 fn apply_theme(app: &AppHandle, theme: &themes::Theme) {
-    let _ = app.emit("theme", theme);
+    let settings = current_settings(app);
+    let mut shown = theme.clone();
+    settings.lyrics_over(&mut shown);
+    let _ = app.emit("theme", &shown);
     let shared = app.state::<Arc<Shared>>();
     if let Ok(mut fixed) = shared.fixed_palette.lock() {
         *fixed = theme_service::fixed_palette(theme);
     }
     shared.refresh_glow_palette();
-    let settings = app
-        .state::<AppSettings>()
-        .current
-        .lock()
-        .map(|s| s.clone())
-        .unwrap_or_default();
     if let Some(overlay) = shared.overlay.as_ref() {
         overlay.set_config(theme_service::overlay_config(theme, &settings));
     }
@@ -758,6 +783,32 @@ fn nudge_lyrics(
     lyrics.nudge(&app, delta_ms)
 }
 
+/// Sets this song's lyrics timing exactly (positive = earlier): the number
+/// box and tap to sync. Returns the timing kept (clamped to ±10 s).
+#[tauri::command]
+fn set_lyrics_offset(
+    offset_ms: i64,
+    app: AppHandle,
+    lyrics: State<'_, Arc<LyricsService>>,
+) -> Result<i64, String> {
+    lyrics.set_offset(&app, offset_ms)
+}
+
+/// "Sync": listen for where the singing starts and line the lyrics up. The
+/// answer comes as a "lyrics-sync" event; an error says why it can't (the
+/// page then offers tap to sync).
+#[tauri::command]
+fn sync_lyrics(sound: State<'_, sound::Sound>) -> Result<(), String> {
+    sound.resync()
+}
+
+/// "Try other lyrics": another version from LRCLIB. Returns what happened.
+#[tauri::command]
+async fn other_lyrics(app: AppHandle) -> Result<String, String> {
+    let lyrics = app.state::<Arc<LyricsService>>().inner().clone();
+    lyrics.other_version(app).await
+}
+
 #[tauri::command]
 fn get_state(app: AppHandle, shared: State<'_, Arc<Shared>>) -> Snapshot {
     let mut snapshot = shared
@@ -850,6 +901,23 @@ async fn control(
     };
     shared.media.control(control);
     Ok(())
+}
+
+/// Ctrl+Alt+O: opens Settings, or closes it when it's already in front.
+/// Returns true when Settings is now open.
+fn toggle_settings(app: &AppHandle) -> bool {
+    if let Some(w) = app.get_webview_window(SETTINGS)
+        && w.is_visible().unwrap_or(false)
+        && !w.is_minimized().unwrap_or(false)
+        && w.is_focused().unwrap_or(false)
+    {
+        let _ = w.close();
+        return false;
+    }
+    if let Err(e) = show_settings(app) {
+        tracing::warn!("settings: {e}");
+    }
+    true
 }
 
 /// Shows the mini player, or closes it when it's already in front. True = shown.
@@ -945,7 +1013,9 @@ fn place_lyrics(app: &AppHandle, window: &tauri::WebviewWindow) -> tauri::Result
     let size = window.outer_size()?;
     let margin = (24.0 * m.scale_factor()) as i32;
     let free = area.size.height as i32 - size.height as i32;
-    let position = app.state::<Arc<ThemeService>>().current().lyrics.position;
+    let position = shown_theme(app, app.state::<Arc<ThemeService>>().current())
+        .lyrics
+        .position;
     let y = area.position.y
         + match position {
             themes::LyricsPosition::TopCenter => margin,
@@ -1136,6 +1206,15 @@ fn build_tray(app: &AppHandle) -> tauri::Result<()> {
             {
                 let _ = show_player(tray.app_handle());
             }
+            // Double-click: Settings (the single click before it shows the player).
+            if let TrayIconEvent::DoubleClick {
+                button: MouseButton::Left,
+                ..
+            } = event
+                && let Err(e) = show_settings(tray.app_handle())
+            {
+                tracing::warn!("settings: {e}");
+            }
         });
     if let Some(icon) = app.default_window_icon() {
         tray = tray.icon(icon.clone());
@@ -1201,7 +1280,13 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_state,
             get_lyrics,
+            get_shown_theme,
             nudge_lyrics,
+            hotkeys::lyrics_timing,
+            set_lyrics_offset,
+            lyrics_gate::lyrics_hint,
+            sync_lyrics,
+            other_lyrics,
             control,
             get_settings,
             set_settings,
@@ -1231,12 +1316,15 @@ pub fn run() {
             presets::apply_scene_preset,
             glow::want_kicks,
             open_support,
+            feedback::feedback_info,
             update::update_status,
             update::check_update,
             update::install_update,
             update::skip_update,
             update::dismiss_update,
             update::update_details,
+            update::whats_new,
+            update::close_whats_new,
             hotkeys::hotkey_list,
             sleep::set_sleep_timer,
             sleep::get_sleep_timer,
@@ -1276,9 +1364,12 @@ pub fn run() {
             app.manage(osd::LastToast::default());
             app.manage(update::Updates::new(app.package_info().version.to_string()));
             let path = app.path().app_config_dir()?.join("settings.json");
+            let had_settings = path.exists();
             let settings = Settings::load(&path);
             app.manage(sound::Sound::new(app.handle().clone(), &settings));
             app.manage(lyrics_gate::LyricsGate::start(app.handle().clone()));
+            #[cfg(windows)]
+            lyrics_listen::start(app.handle().clone());
             app.manage(stage::StageGate::start(app.handle().clone()));
             app.manage(adblock::AdBlock::start(
                 app.path().app_cache_dir()?.join("filters"),
@@ -1322,6 +1413,7 @@ pub fn run() {
             build_tray(app.handle())?;
             hotkeys::start(app.handle(), current_settings(app.handle()).hotkeys);
             update::start(app.handle());
+            update::whats_new_on_start(app.handle(), had_settings);
             show_player(app.handle())?;
             let taskbar_side = app
                 .state::<AppSettings>()
@@ -1408,5 +1500,18 @@ mod tests {
         };
         let kept = keep_owned(Settings::default(), &current);
         assert_eq!(kept.skipped_update, "0.4.0");
+    }
+
+    #[test]
+    fn a_stale_window_cannot_bring_back_the_whats_new_card() {
+        let current = Settings {
+            last_seen_version: "0.5.0".into(),
+            ..Default::default()
+        };
+        let stale = Settings {
+            last_seen_version: "0.4.0".into(),
+            ..Default::default()
+        };
+        assert_eq!(keep_owned(stale, &current).last_seen_version, "0.5.0");
     }
 }

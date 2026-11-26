@@ -1249,7 +1249,7 @@
       drop-shadow(0 6px 30px rgba(0, 0, 0, 0.35));
   }
   .face text {
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 340px;
     font-weight: 260;
     font-stretch: 75%;
@@ -1355,7 +1355,7 @@
   .line,
   .after {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     text-wrap: balance;
   }
   .line {
@@ -2423,7 +2423,7 @@
   }
   .corner .ct {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: clamp(22px, 1.8vw, 40px);
     font-weight: 760;
     font-stretch: 88%;

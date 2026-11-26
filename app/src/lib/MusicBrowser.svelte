@@ -550,7 +550,7 @@
   }
   h3 {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 15px;
     font-weight: 720;
     letter-spacing: -0.01em;

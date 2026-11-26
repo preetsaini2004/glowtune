@@ -29,6 +29,7 @@
     player: "M3 6h18v12H3zM7 14h4",
     scene: "M3 5h18v14H3zM3 15l5-5 4 4 3-3 6 6",
     card: "M5 3h14v18H5zM8 14h8M8 17h5M9 6h6v5H9z",
+    timing: "M12 21a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM12 9v4l2.5 2.5M10 2h4",
   };
 
   function show(t: Toast) {

@@ -15,7 +15,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use audio_engine::{Blend, EqSettings};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::settings::Settings;
 
@@ -127,6 +127,9 @@ struct Inner {
     watching: bool,
     /// The fast-fill thread is alive.
     filling: bool,
+    /// The lyrics alignment thread is alive (only with no blend: the
+    /// fast-fill thread aligns otherwise).
+    aligning: bool,
     /// Glowtune's own volume on top of the page's, while the engine runs
     /// (1 = as the page plays). See `set_volume`.
     gain: f32,
@@ -263,6 +266,16 @@ struct AlignState {
     last: Option<Instant>,
     /// The song (lyrics key) already decided on.
     decided: String,
+    /// "Sync" was pressed for this song (lyrics key), which had this timing
+    /// (ms) before: the next decision is saved and reported.
+    manual: Option<(String, i64)>,
+}
+
+/// Sync's answer, sent as "lyrics-sync".
+#[derive(Clone, serde::Serialize)]
+pub struct SyncResult {
+    pub ok: bool,
+    pub message: String,
 }
 
 impl Sound {
@@ -281,6 +294,7 @@ impl Sound {
                 seen_since: None,
                 watching: false,
                 filling: false,
+                aligning: false,
                 gain: settings.service_volume,
                 gain_edits: 0,
             }),
@@ -309,6 +323,20 @@ impl Sound {
         drop(previous);
     }
 
+    /// The service window's browser process, if one is open, and whether
+    /// the sound engine is playing its sound right now (then the engine
+    /// lines the lyrics up; otherwise `lyrics_listen` can).
+    pub fn window(&self) -> (Option<u32>, bool) {
+        let Ok(inner) = self.inner.lock() else {
+            return (None, false);
+        };
+        #[cfg(windows)]
+        let running = inner.engine.as_ref().is_some_and(|e| e.status().running());
+        #[cfg(not(windows))]
+        let running = false;
+        (inner.window_pid, running)
+    }
+
     pub fn window_closed(&self) {
         self.change(|inner| inner.window_pid = None);
     }
@@ -319,7 +347,7 @@ impl Sound {
     /// released: stopping it waits for its thread, and that thread's last act
     /// (`notify`) reads this state again. Holding the lock would deadlock.
     fn change(&self, f: impl FnOnce(&mut Inner)) {
-        let (retired, watch, fill, hand_back) = {
+        let (retired, watch, fill, align, hand_back) = {
             let Ok(mut inner) = self.inner.lock() else {
                 return;
             };
@@ -337,7 +365,10 @@ impl Sound {
             inner.watching |= watch;
             let fill = !inner.filling && inner.engine.is_some() && inner.config.blend != Blend::Off;
             inner.filling |= fill;
-            (retired, watch, fill, hand_back)
+            let align =
+                !inner.aligning && inner.engine.is_some() && inner.config.blend == Blend::Off;
+            inner.aligning |= align;
+            (retired, watch, fill, align, hand_back)
         };
         match hand_back {
             Some(gain) => self.hand_back_volume(gain, retired),
@@ -348,6 +379,46 @@ impl Sound {
         }
         if fill {
             Self::watch_fill(self.app.clone());
+        }
+        if align {
+            Self::watch_align(self.app.clone());
+        }
+    }
+
+    /// With only the Equalizer on there's no fast-fill thread, so this one
+    /// runs the lyrics alignment (and Sync) once a second. It ends when the
+    /// engine stops or a blend is turned on (the fill thread takes over).
+    fn watch_align(app: AppHandle) {
+        let thread_app = app.clone();
+        let spawned = std::thread::Builder::new()
+            .name("glowtune-align".into())
+            .spawn(move || {
+                let app = thread_app;
+                loop {
+                    std::thread::sleep(Duration::from_secs(1));
+                    let Some(sound) = app.try_state::<Sound>() else {
+                        return;
+                    };
+                    {
+                        let Ok(mut inner) = sound.inner.lock() else {
+                            return;
+                        };
+                        if inner.engine.is_none() || inner.config.blend != Blend::Off {
+                            inner.aligning = false;
+                            return;
+                        }
+                    }
+                    #[cfg(windows)]
+                    sound.align_tick();
+                }
+            });
+        if let Err(e) = spawned {
+            tracing::warn!("lyrics alignment: {e}");
+            if let Some(sound) = app.try_state::<Sound>()
+                && let Ok(mut inner) = sound.inner.lock()
+            {
+                inner.aligning = false;
+            }
         }
     }
 
@@ -428,17 +499,117 @@ impl Sound {
     // leaves the lyrics as they are. A nudge saved for the song: hands off.
 
     /// How much clearer the voice must be after its entry than before.
-    const ALIGN_MIN_STEP: f32 = 1.5;
+    pub(crate) const ALIGN_MIN_STEP: f32 = 1.5;
     /// Closer than this, the lyrics are left alone.
-    const ALIGN_MIN_SHIFT_MS: f64 = 1000.0;
+    pub(crate) const ALIGN_MIN_SHIFT_MS: f64 = 1000.0;
     /// How far from the first line the voice may come in.
-    const ALIGN_SEARCH_MS: f64 = 12_000.0;
+    pub(crate) const ALIGN_SEARCH_MS: f64 = 12_000.0;
     /// An entry this early is the blend with the song before, not the voice
     /// (live: a DJ handover read as "voice at 0.0 s", lyrics moved 9.7 s).
-    const ALIGN_NOT_BEFORE_MS: f64 = 2000.0;
+    pub(crate) const ALIGN_NOT_BEFORE_MS: f64 = 2000.0;
     /// Shifts bigger than this need a much clearer entry.
-    const ALIGN_BIG_SHIFT_MS: f64 = 5000.0;
-    const ALIGN_BIG_STEP: f32 = 2.5;
+    pub(crate) const ALIGN_BIG_SHIFT_MS: f64 = 5000.0;
+    pub(crate) const ALIGN_BIG_STEP: f32 = 2.5;
+    /// After "Sync", smaller corrections count too (the user asked).
+    const SYNC_MIN_SHIFT_MS: f64 = 150.0;
+    /// "Sync" listens for the singer's first entry: it must not be long past.
+    const SYNC_LATEST_MS: f64 = 20_000.0;
+
+    /// "Sync" pressed: measure where the singing starts again, from the
+    /// lyrics file's own timing, and save what's found. Works while
+    /// Glowtune plays the sound (an effect is on) and the song is still near
+    /// its first sung line; otherwise says why (the page offers tap to sync).
+    /// The answer arrives as a "lyrics-sync" event.
+    pub fn resync(&self) -> Result<(), String> {
+        #[cfg(windows)]
+        {
+            let lyrics = self
+                .app
+                .try_state::<std::sync::Arc<crate::lyrics_service::LyricsService>>()
+                .ok_or("Lyrics aren't ready.")?;
+            let view = lyrics.view();
+            if view.status != "synced" {
+                return Err("This song has no synced lyrics to line up.".into());
+            }
+            let running = self
+                .inner
+                .lock()
+                .ok()
+                .and_then(|i| i.engine.as_ref().map(|e| e.status().running()))
+                .unwrap_or(false);
+            if !running {
+                return Err(
+                    "Glowtune hears the song only with the Equalizer, Crossfade or Automix on. Tap along instead."
+                        .into(),
+                );
+            }
+            let first = view
+                .lines
+                .iter()
+                .find(|l| !l.text.trim().is_empty())
+                .map(|l| l.time_ms)
+                .ok_or("No sung lines to line up.")?;
+            let heard = crate::hub::heard_position_ms(&self.app).unwrap_or(f64::MAX);
+            if heard > first + Self::SYNC_LATEST_MS {
+                return Err(
+                    "Sync listens for where the singing starts, so it works near the start of a song. Tap along instead."
+                        .into(),
+                );
+            }
+            let (key, had) = lyrics.unshift(&self.app).ok_or("Nothing is playing.")?;
+            let mut state = self.align.lock().map_err(|e| e.to_string())?;
+            state.decided.clear();
+            state.manual = Some((key, had));
+            tracing::info!("lyrics sync: listening (timing was {had} ms)");
+            Ok(())
+        }
+        #[cfg(not(windows))]
+        Err("Sync isn't available here. Tap along instead.".into())
+    }
+
+    /// Ends a "Sync" for the song `key`, if one is waiting: saves `offset`
+    /// (what was found) or puts back the timing it had, and reports it.
+    #[cfg(windows)]
+    fn finish_sync(
+        &self,
+        key: &str,
+        lyrics: &crate::lyrics_service::LyricsService,
+        offset: Option<i64>,
+    ) {
+        let manual = match self.align.lock() {
+            Ok(mut s) if s.manual.as_ref().is_some_and(|(k, _)| k == key) => s.manual.take(),
+            _ => None,
+        };
+        let Some((_, had)) = manual else {
+            return;
+        };
+        let result = match offset {
+            Some(o) => {
+                let _ = lyrics.set_offset(&self.app, o);
+                SyncResult {
+                    ok: true,
+                    message: match o {
+                        0 => "In sync: the lyrics were already on time.".into(),
+                        o => format!(
+                            "Synced: lyrics moved {:.1} s {}.",
+                            o.abs() as f64 / 1000.0,
+                            if o > 0 { "earlier" } else { "later" }
+                        ),
+                    },
+                }
+            }
+            None => {
+                let _ = lyrics.set_offset(&self.app, had);
+                SyncResult {
+                    ok: false,
+                    message: "Couldn't hear clearly where the singing starts. Tap along instead."
+                        .into(),
+                }
+            }
+        };
+        tracing::info!("lyrics sync: {}", result.message);
+        let _ = self.app.emit("lyrics-sync", result);
+    }
 
     #[cfg(windows)]
     fn align_tick(&self) {
@@ -478,10 +649,21 @@ impl Sound {
                 })
                 .unwrap_or_default();
             tracing::info!("lyrics align: {title}: {why}");
+            // A "Sync" waiting on this song didn't find a shift (no-op otherwise).
+            self.finish_sync(&key, &lyrics, None);
         };
         if self.align.lock().is_ok_and(|s| s.decided == key) {
             return;
         }
+        let manual = self
+            .align
+            .lock()
+            .is_ok_and(|s| s.manual.as_ref().is_some_and(|(k, _)| *k == key));
+        let min_shift = if manual {
+            Self::SYNC_MIN_SHIFT_MS
+        } else {
+            Self::ALIGN_MIN_SHIFT_MS
+        };
         let Some(first) = lines.iter().find(|l| l.sung).map(|l| l.time_ms) else {
             return decide("no sung line");
         };
@@ -528,7 +710,8 @@ impl Sound {
         match voice::first_entry(&trace, start_ms, from, to, Self::ALIGN_MIN_STEP) {
             Some(entry) => {
                 let lag = entry.at_ms - first;
-                if lag.abs() < Self::ALIGN_MIN_SHIFT_MS {
+                if lag.abs() < min_shift {
+                    self.finish_sync(&key, &lyrics, Some(0));
                     decide(&format!(
                         "in time (voice at {:.1} s, first line {:.1} s)",
                         entry.at_ms / 1000.0,
@@ -546,6 +729,9 @@ impl Sound {
                 } else {
                     // Positive offsets show lyrics earlier.
                     let offset = -((lag / 50.0).round() * 50.0) as i64;
+                    lyrics.align(&self.app, &key, offset);
+                    // After "Sync" it's also saved for this song.
+                    self.finish_sync(&key, &lyrics, Some(offset));
                     decide(&format!(
                         "voice comes in at {:.1} s, first line says {:.1} s (step {:.1}): shifting the lyrics {:+.1} s",
                         entry.at_ms / 1000.0,
@@ -553,7 +739,6 @@ impl Sound {
                         entry.step,
                         lag / 1000.0
                     ));
-                    lyrics.align(&self.app, &key, offset);
                 }
             }
             None => decide(&format!(

@@ -43,7 +43,7 @@ dependencies = [
 
 [[package]]
 name = "adblock_layer"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "adblock",
  "reqwest",
@@ -138,7 +138,7 @@ dependencies = [
 
 [[package]]
 name = "analysis"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "image",
  "realfft",
@@ -365,7 +365,7 @@ checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
 
 [[package]]
 name = "audio_capture"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "analysis",
  "cpal",
@@ -376,7 +376,7 @@ dependencies = [
 
 [[package]]
 name = "audio_engine"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "realfft",
  "signalsmith-stretch",
@@ -1849,7 +1849,7 @@ checksum = "e4eba85ea1d0a966a983acd07deee566e67395d2d96b6fb39e62b5a833f1eb0b"
 
 [[package]]
 name = "glowtune"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "adblock_layer",
  "analysis",
@@ -2691,7 +2691,7 @@ checksum = "b6d2cec3eae94f9f509c767b45932f1ada8350c4bdb85af2fcab4a3c14807981"
 
 [[package]]
 name = "library"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "lofty",
  "notify",
@@ -2797,7 +2797,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lyrics"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "reqwest",
  "serde",
@@ -2836,7 +2836,7 @@ dependencies = [
 
 [[package]]
 name = "media_source"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "thiserror 2.0.21",
  "tracing",
@@ -3672,7 +3672,7 @@ dependencies = [
 
 [[package]]
 name = "overlay"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "bytemuck",
  "pollster",
@@ -5615,7 +5615,7 @@ dependencies = [
 
 [[package]]
 name = "themes"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "notify",
  "serde",

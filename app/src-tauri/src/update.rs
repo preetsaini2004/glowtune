@@ -138,7 +138,7 @@ impl Updates {
         }
     }
 
-    fn view(&self) -> UpdateView {
+    pub(crate) fn view(&self) -> UpdateView {
         self.view
             .lock()
             .map(|v| v.clone())
@@ -320,10 +320,20 @@ fn offer_when_uncovered(app: &AppHandle, version: &str) {
 /// The pop-up: a glass card in the bottom-right corner of the main screen,
 /// shown without taking focus.
 fn show_popup(app: &AppHandle) -> tauri::Result<()> {
-    let w = match app.get_webview_window(POPUP) {
+    // Both cards sit in the same corner; the newer news wins.
+    if let Some(w) = app.get_webview_window(WHATS_NEW) {
+        let _ = w.close();
+    }
+    corner_card(app, POPUP, "/update", "Glowtune update")
+}
+
+/// A glass card in the bottom-right corner of the main screen (window
+/// `label`, page `route`), shown without taking focus.
+fn corner_card(app: &AppHandle, label: &str, route: &str, title: &str) -> tauri::Result<()> {
+    let w = match app.get_webview_window(label) {
         Some(w) => w,
-        None => WebviewWindowBuilder::new(app, POPUP, WebviewUrl::App("/update".into()))
-            .title("Glowtune update")
+        None => WebviewWindowBuilder::new(app, label, WebviewUrl::App(route.into()))
+            .title(title)
             .inner_size(POPUP_SIZE.0, POPUP_SIZE.1)
             .resizable(false)
             .maximizable(false)
@@ -367,6 +377,17 @@ fn before_exit(app: &AppHandle) {
     // The song playing now still counts.
     if let Some(l) = app.try_state::<crate::stats::Listening>() {
         l.flush();
+    }
+    // The pop-up (or About) just showed this version's notes: no "What's
+    // new" card after the restart. Written straight to the file; applying
+    // settings to windows makes no sense this close to exit.
+    if let Some(version) = app.state::<Updates>().view().version {
+        let state = app.state::<crate::AppSettings>();
+        let mut s = state.current.lock().map(|s| s.clone()).unwrap_or_default();
+        s.last_seen_version = version;
+        if let Err(e) = s.save(&state.path) {
+            tracing::warn!("updates: could not note the version: {e}");
+        }
     }
 }
 
@@ -502,5 +523,133 @@ pub fn update_details(app: AppHandle) -> Result<(), String> {
 fn hide_popup(app: &AppHandle) {
     if let Some(w) = app.get_webview_window(POPUP) {
         let _ = w.hide();
+    }
+}
+
+// ---- "What's new" after an update --------------------------------------
+
+/// The "What's new" card's window label (route `/update?whatsnew`).
+pub const WHATS_NEW: &str = "whatsnew";
+/// This version's release notes, built in (see build.rs). Empty: no card.
+const NOTES: &str = include_str!(concat!(env!("OUT_DIR"), "/whats_new.md"));
+/// Let Glowtune settle (and the player appear) before the card.
+const WHATS_NEW_AFTER: Duration = Duration::from_secs(6);
+
+/// At start: the first run of a new version shows its "What's new" card
+/// once, but only to people who didn't already read the notes:
+/// - Updated through the pop-up or About: `before_exit` already stored the
+///   new version, so no card.
+/// - The Store copy (the Store updates it silently) or an installer run by
+///   hand over an older version: the card.
+/// - A fresh install, with no settings file before: just remembers the
+///   version.
+/// - An installed copy with no version stored came from 0.4.0, whose pop-up
+///   showed the notes but couldn't store the version yet: no card.
+pub fn whats_new_on_start(app: &AppHandle, had_settings: bool) {
+    let current = app.package_info().version.to_string();
+    let seen = crate::current_settings(app).last_seen_version;
+    if seen == current {
+        return;
+    }
+    crate::update_settings(app, |s| s.last_seen_version.clone_from(&current));
+    if !had_settings || card_notes(NOTES).is_empty() {
+        return;
+    }
+    let channel = app.state::<Updates>().view().channel;
+    if seen.is_empty() && channel == Channel::Github {
+        return;
+    }
+    tracing::info!("updates: first start of {current} (was {seen:?}): what's new");
+    let app = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("glowtune-whats-new".into())
+        .spawn(move || {
+            std::thread::sleep(WHATS_NEW_AFTER);
+            // Never over a full-screen game: wait until it's gone.
+            while overlay::fullscreen_screen().is_some() {
+                std::thread::sleep(COVERED_RETRY);
+            }
+            if let Err(e) = corner_card(
+                &app,
+                WHATS_NEW,
+                "/update?whatsnew",
+                "What's new in Glowtune",
+            ) {
+                tracing::warn!("what's new: {e}");
+            }
+        });
+}
+
+/// The version and notes the "What's new" card shows.
+#[derive(Serialize)]
+pub struct WhatsNew {
+    version: String,
+    notes: String,
+}
+
+#[tauri::command]
+pub fn whats_new(app: AppHandle) -> WhatsNew {
+    WhatsNew {
+        version: app.package_info().version.to_string(),
+        notes: card_notes(NOTES),
+    }
+}
+
+/// The part of the release notes the card shows: the "What's new" section
+/// (without its heading; the card's title says it) and "Fixes" (with its
+/// heading). The rest (early-build note, known issues, bug links) is for the
+/// GitHub page. Empty when there's neither section: then no card.
+fn card_notes(md: &str) -> String {
+    let mut out = Vec::new();
+    let mut on = false;
+    for line in md.lines() {
+        if let Some(heading) = line.strip_prefix("## ") {
+            let h = heading.trim().to_lowercase().replace('\u{2019}', "'");
+            let whats_new = h.starts_with("what's new") || h.starts_with("whats new");
+            on = whats_new || h.starts_with("fixes");
+            if whats_new {
+                continue;
+            }
+        }
+        if on {
+            out.push(line);
+        }
+    }
+    out.join("\n").trim().to_string()
+}
+
+/// "Got it" on the "What's new" card.
+#[tauri::command]
+pub fn close_whats_new(app: AppHandle) {
+    if let Some(w) = app.get_webview_window(WHATS_NEW) {
+        let _ = w.close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::card_notes;
+
+    #[test]
+    fn the_card_shows_whats_new_and_fixes_only() {
+        let md = "# Glowtune 0.5.0\n\n> **Early build.** Bugs.\n\n## What’s new\n\n**Lyrics Sync.**\n- Tap to sync.\n\n## Fixes\n\n- The bar.\n\n## Known issues\n\n- Apple Music.\n\n## Found a bug?\n\n- Email us\n";
+        assert_eq!(
+            card_notes(md),
+            "**Lyrics Sync.**\n- Tap to sync.\n\n## Fixes\n\n- The bar."
+        );
+    }
+
+    #[test]
+    fn no_card_without_a_whats_new_or_fixes_section() {
+        assert_eq!(card_notes(""), "");
+        assert_eq!(card_notes("# Glowtune\n\n## Known issues\n\n- x\n"), "");
+    }
+
+    #[test]
+    fn the_real_040_notes_make_a_card() {
+        let notes = card_notes(include_str!("../../../docs/release-notes-0.4.0.md"));
+        assert!(notes.starts_with("**Glowtune now updates itself.**"));
+        assert!(!notes.contains("Known issues"));
+        assert!(!notes.contains("Early build"));
     }
 }

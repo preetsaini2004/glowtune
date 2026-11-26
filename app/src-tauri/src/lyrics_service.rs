@@ -98,12 +98,29 @@ impl LyricsView {
     }
 }
 
+/// The song whose lyrics are showing, and the LRCLIB versions tried for it.
+struct Song {
+    key: String,
+    title: String,
+    artist: String,
+    duration: Option<Duration>,
+    /// LRCLIB ids already shown by "Try other lyrics".
+    tried: Vec<i64>,
+    /// The synced lyrics text on screen now (to skip identical versions).
+    shown: Option<String>,
+}
+
+/// Furthest the lyrics timing can be moved either way.
+const MAX_OFFSET_MS: i64 = 10_000;
+
 pub struct LyricsService {
     client: Option<LrclibClient>,
     cache: Option<LyricsCache>,
     generation: AtomicU64,
     /// Cache key of the current song, and what's on screen.
     current: Mutex<(Option<String>, LyricsView)>,
+    /// The current song, for "Try other lyrics".
+    song: Mutex<Option<Song>>,
 }
 
 impl LyricsService {
@@ -119,6 +136,7 @@ impl LyricsService {
             cache,
             generation: AtomicU64::new(0),
             current: Mutex::new((None, LyricsView::empty("none"))),
+            song: Mutex::new(None),
         }
     }
 
@@ -155,6 +173,18 @@ impl LyricsService {
         duration: Option<Duration>,
     ) {
         let key = LyricsCache::key(title, artist, duration);
+        if let Ok(mut song) = self.song.lock()
+            && song.as_ref().is_none_or(|s| s.key != key)
+        {
+            *song = Some(Song {
+                key: key.clone(),
+                title: title.to_owned(),
+                artist: artist.to_owned(),
+                duration,
+                tried: Vec::new(),
+                shown: None,
+            });
+        }
         let same_song = self
             .current
             .lock()
@@ -166,6 +196,7 @@ impl LyricsService {
         let generation = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
 
         if let Some(entry) = self.cache.as_ref().and_then(|c| c.get(&key)) {
+            self.showing(&key, &entry);
             self.publish(app, Some(key), LyricsView::from_entry(&entry));
             return;
         }
@@ -224,6 +255,7 @@ impl LyricsService {
                     view.status,
                     view.lines.len()
                 );
+                this.showing(&key, &entry);
                 this.publish(&app, Some(key), view);
             }
         });
@@ -266,13 +298,20 @@ impl LyricsService {
 
     /// Shifts the current song's lyrics timing and remembers it.
     pub fn nudge(&self, app: &AppHandle, delta_ms: i64) -> Result<i64, String> {
+        let now = self.view().offset_ms;
+        self.set_offset(app, now + delta_ms)
+    }
+
+    /// Sets the current song's lyrics timing (positive: earlier) and
+    /// remembers it: the number box, tap to sync, and Sync's result.
+    pub fn set_offset(&self, app: &AppHandle, offset_ms: i64) -> Result<i64, String> {
         let (key, mut view) = self
             .current
             .lock()
             .map(|c| c.clone())
             .map_err(|e| e.to_string())?;
-        let key = key.ok_or("no song")?;
-        view.offset_ms = (view.offset_ms + delta_ms).clamp(-10_000, 10_000);
+        let key = key.ok_or("Nothing is playing.")?;
+        view.offset_ms = offset_ms.clamp(-MAX_OFFSET_MS, MAX_OFFSET_MS);
         if let Some(cache) = &self.cache {
             cache
                 .set_offset(&key, view.offset_ms)
@@ -282,6 +321,131 @@ impl LyricsService {
         self.publish(app, Some(key), view);
         Ok(offset)
     }
+
+    /// Back to the lyrics file's own timing for now (not saved), so Sync can
+    /// measure from it. Returns the timing it had.
+    pub fn unshift(&self, app: &AppHandle) -> Option<(String, i64)> {
+        let (key, mut view) = self.current.lock().ok()?.clone();
+        let key = key?;
+        let had = view.offset_ms;
+        view.offset_ms = 0;
+        self.publish(app, Some(key.clone()), view);
+        Some((key, had))
+    }
+
+    /// Remembers which lyrics are on screen for the song `key`.
+    fn showing(&self, key: &str, entry: &CacheEntry) {
+        if let Ok(mut song) = self.song.lock()
+            && let Some(song) = song.as_mut().filter(|s| s.key == key)
+        {
+            song.shown = match &entry.lyrics {
+                CachedLyrics::Synced(text) => Some(text.clone()),
+                _ => None,
+            };
+        }
+    }
+
+    /// "Try other lyrics": another synced version of this song from LRCLIB,
+    /// the one whose length is closest to the song's, skipping versions
+    /// already shown. It replaces the cached lyrics, with no timing shift.
+    /// Returns a sentence for the user.
+    pub async fn other_version(self: Arc<Self>, app: AppHandle) -> Result<String, String> {
+        let client = self
+            .client
+            .clone()
+            .ok_or("Lyrics lookups are unavailable.")?;
+        let (key, title, artist, duration, tried, shown) = {
+            let song = self.song.lock().map_err(|e| e.to_string())?;
+            let s = song.as_ref().ok_or("Nothing is playing.")?;
+            (
+                s.key.clone(),
+                s.title.clone(),
+                s.artist.clone(),
+                s.duration,
+                s.tried.clone(),
+                s.shown.clone(),
+            )
+        };
+        let query = lyrics::clean_query(&title, &artist);
+        let mut records = client
+            .search(&query.title, &query.artist)
+            .await
+            .map_err(|_| "Couldn't reach LRCLIB. Check your internet connection.")?;
+        if !query.artist.is_empty() {
+            // The artist field may not name the singer: also by title alone.
+            if let Ok(more) = client.search(&query.title, "").await {
+                records.extend(more.into_iter().filter(|r| r.duration.is_some()));
+            }
+        }
+        let pick = pick_version(&records, duration, &tried, shown.as_deref())
+            .ok_or("No other synced version of these lyrics on LRCLIB.")?;
+        let (id, text, length) = (
+            pick.id,
+            pick.synced_lyrics.clone().unwrap_or_default(),
+            pick.duration,
+        );
+        let entry = CacheEntry {
+            lyrics: CachedLyrics::Synced(text),
+            offset_ms: 0,
+            source: "lrclib".into(),
+        };
+        if let Some(cache) = &self.cache
+            && let Err(e) = cache.put(&key, &entry)
+        {
+            tracing::warn!("lyrics cache write: {e}");
+        }
+        if let Ok(mut song) = self.song.lock()
+            && let Some(s) = song.as_mut().filter(|s| s.key == key)
+        {
+            s.tried.push(id);
+        }
+        // Still the same song?
+        if !self
+            .current
+            .lock()
+            .is_ok_and(|c| c.0.as_deref() == Some(key.as_str()))
+        {
+            return Err("The song changed.".into());
+        }
+        self.showing(&key, &entry);
+        self.publish(&app, Some(key), LyricsView::from_entry(&entry));
+        tracing::info!("lyrics: switched {title} to LRCLIB version {id}");
+        Ok(match length {
+            Some(s) => format!(
+                "Switched to another version ({}:{:02} long).",
+                (s as u64) / 60,
+                (s as u64) % 60
+            ),
+            None => "Switched to another version.".into(),
+        })
+    }
+}
+
+/// The best other synced version: not tried yet, not the text on screen,
+/// closest in length to the song (versions with no length last).
+fn pick_version<'a>(
+    records: &'a [lyrics::lrclib::LrclibRecord],
+    duration: Option<Duration>,
+    tried: &[i64],
+    shown: Option<&str>,
+) -> Option<&'a lyrics::lrclib::LrclibRecord> {
+    let song = duration.map(|d| d.as_secs_f64());
+    records
+        .iter()
+        .filter(|r| !tried.contains(&r.id))
+        .filter(|r| {
+            r.synced_lyrics
+                .as_deref()
+                .is_some_and(|t| !t.trim().is_empty() && Some(t.trim()) != shown.map(str::trim))
+        })
+        .min_by(|a, b| {
+            let off = |r: &lyrics::lrclib::LrclibRecord| match (r.duration, song) {
+                (Some(d), Some(s)) => (d - s).abs(),
+                (Some(_), None) => 0.0,
+                (None, _) => f64::MAX,
+            };
+            off(a).total_cmp(&off(b))
+        })
 }
 
 fn unix_now() -> u64 {
@@ -318,6 +482,55 @@ impl LyricsService {
                 lines,
                 offset_ms: 0,
             },
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use lyrics::lrclib::LrclibRecord;
+
+    fn record(id: i64, secs: Option<f64>, synced: Option<&str>) -> LrclibRecord {
+        LrclibRecord {
+            id,
+            track_name: "Song".into(),
+            artist_name: "Artist".into(),
+            album_name: None,
+            duration: secs,
+            instrumental: false,
+            plain_lyrics: None,
+            synced_lyrics: synced.map(String::from),
+        }
+    }
+
+    #[test]
+    fn other_lyrics_picks_the_closest_length_not_already_shown() {
+        let song = Some(Duration::from_secs(206));
+        let records = [
+            record(1, Some(284.0), Some("[00:01.00]album")),
+            record(2, Some(207.0), Some("[00:01.00]shown now")),
+            record(3, Some(205.0), Some("[00:01.00]radio edit")),
+            record(4, Some(206.0), None), // plain only
+            record(5, None, Some("[00:01.00]no length")),
+        ];
+        let shown = Some("[00:01.00]shown now");
+        assert_eq!(
+            pick_version(&records, song, &[], shown).map(|r| r.id),
+            Some(3)
+        );
+        // Pressed again: the next best.
+        assert_eq!(
+            pick_version(&records, song, &[3], shown).map(|r| r.id),
+            Some(1)
+        );
+        assert_eq!(
+            pick_version(&records, song, &[3, 1], shown).map(|r| r.id),
+            Some(5)
+        );
+        assert_eq!(
+            pick_version(&records, song, &[3, 1, 5], shown).map(|r| r.id),
+            None
         );
     }
 }

@@ -329,42 +329,9 @@
       <label class="slider"><span>Sparkle</span><input type="range" min="0" max="1" step="0.05" bind:value={draft.glow.particle_sparkle} disabled={draft.glow.effect === "still"} oninput={edit} /></label>
     {/if}
 
-    <h3>Lyrics</h3>
-    <p class="hint">For the floating desktop lyrics when their look is Theme (Settings → Lyrics).</p>
-    <div class="segmented" role="radiogroup" aria-label="Lyrics animation">
-      {#each [["rise", "Rise"], ["karaoke", "Karaoke"], ["static", "Still"]] as [style, label]}
-        <button
-          role="radio"
-          aria-checked={draft.lyrics.style === style}
-          class:on={draft.lyrics.style === style}
-          onclick={() => {
-            if (draft) draft.lyrics.style = style as Theme["lyrics"]["style"];
-            edit();
-          }}>{label}</button
-        >
-      {/each}
-    </div>
-    <div class="segmented" role="radiogroup" aria-label="Lyrics position">
-      {#each [["bottom-center", "Bottom"], ["center", "Middle"], ["top-center", "Top"]] as [pos, label]}
-        <button
-          role="radio"
-          aria-checked={draft.lyrics.position === pos}
-          class:on={draft.lyrics.position === pos}
-          onclick={() => {
-            if (draft) draft.lyrics.position = pos as Theme["lyrics"]["position"];
-            edit();
-          }}>{label}</button
-        >
-      {/each}
-    </div>
-    <label class="slider"><span>Lyrics size</span><input type="range" min="16" max="96" step="1" bind:value={draft.font.lyrics_size} oninput={edit} /></label>
+    <h3>Font</h3>
+    <p class="hint">Lyrics animation, position, size and font are in Settings → Lyrics.</p>
     <div class="grid">
-      <label class="field">
-        <span>Lyrics font</span>
-        <select bind:value={draft.font.lyrics_family} onchange={edit}>
-          {#each Object.keys(FONT_STACKS) as f}<option value={f}>{f}</option>{/each}
-        </select>
-      </label>
       <label class="field">
         <span>Interface font</span>
         <select bind:value={draft.font.family} onchange={edit}>

@@ -254,7 +254,7 @@
           <p class="coming" data-tauri-drag-region>{lyr.next ? showLyric(lyr.next.text, np.cleanLyrics) || "♪" : ""}</p>
         {:else}
           <p class="sung" data-tauri-drag-region>{track.title}</p>
-          <p class="coming" data-tauri-drag-region>{track.artist || track.source}</p>
+          <p class="coming meta" data-tauri-drag-region>{track.artist || track.source}</p>
         {/if}
       </div>
       <button class="icon play" aria-label={np.playing ? "Pause" : "Play"} onclick={() => np.control("playPause")}>
@@ -1108,6 +1108,10 @@
     overflow: hidden;
     text-overflow: ellipsis;
     font-family: var(--font-lyrics);
+  }
+  /* The artist, when there are no lyrics: not a lyric, so the interface font. */
+  .coming.meta {
+    font-family: var(--font-ui);
   }
   .sung {
     font-size: 21px;

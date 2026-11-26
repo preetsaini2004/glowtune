@@ -97,6 +97,16 @@
   }
   // ── Sleep timer ── pauses the music after a while or after this song.
   type Sleep = { endsAtMs: number | null; endOfSong: boolean };
+  // Lyrics timing: the same as Ctrl+Alt+, . and T (sync = back to 0 s).
+  let timingNote = $state("");
+  async function timing(action: "later" | "earlier" | "sync") {
+    try {
+      timingNote = await invoke<string>("lyrics_timing", { action });
+    } catch (e) {
+      timingNote = String(e);
+    }
+  }
+
   let sleep = $state<Sleep>({ endsAtMs: null, endOfSong: false });
   let sleepNow = $state(Date.now());
   const SLEEPS = [
@@ -423,6 +433,17 @@
           {@render sw("stageEmoji", "Emoji")}
         </label>
         <p class="hint">Click any line to jump there. Scroll to look ahead.</p>
+        <div class="timing" role="group" aria-label="Lyrics timing for this song">
+          <span>Timing</span>
+          <div class="chips">
+            <button onclick={() => timing("later")} title="Ctrl+Alt+,">Later</button>
+            <button onclick={() => timing("sync")} title="Ctrl+Alt+T">Sync</button>
+            <button onclick={() => timing("earlier")} title="Ctrl+Alt+.">Earlier</button>
+          </div>
+        </div>
+        <p class="hint" aria-live="polite">
+          {timingNote || "Sync puts the timing back to 0 s. Ctrl+Alt+, and . move it from anywhere."}
+        </p>
       </div>
     {/if}
   </section>
@@ -556,7 +577,7 @@
   }
   .title {
     margin: 2px 10px 8px;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 15px;
     font-weight: 760;
     letter-spacing: -0.01em;
@@ -687,6 +708,15 @@
   .chips button.on {
     background: linear-gradient(135deg, var(--c1), var(--c2));
     border-color: transparent;
+  }
+  .timing {
+    display: grid;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .timing > span {
+    font-size: 12.5px;
+    opacity: 0.75;
   }
   .badge {
     font-size: 11.5px;

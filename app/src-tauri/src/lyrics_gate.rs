@@ -13,7 +13,7 @@
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::LYRICS;
 use crate::lyrics_service::LyricsService;
@@ -74,6 +74,8 @@ pub static MOVING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool
 
 fn apply(app: &AppHandle, playing: bool) {
     let Some(window) = app.get_webview_window(LYRICS) else {
+        // Desktop lyrics are off: nothing is hidden, nothing to explain.
+        set_hint(app, None);
         return;
     };
     if MOVING.load(std::sync::atomic::Ordering::Relaxed) {
@@ -98,11 +100,41 @@ fn apply(app: &AppHandle, playing: bool) {
         .try_state::<crate::AppSettings>()
         .and_then(|s| s.current.lock().ok().map(|s| s.lyrics_over_fullscreen))
         .unwrap_or(false);
-    let want = playing
-        && synced
-        && !scene_has_lyrics
-        && (over_fullscreen || !main_screen_covered(app))
-        && !player_fills_main_screen(app);
+    let covered = !over_fullscreen && main_screen_covered(app);
+    let player_full = !covered && player_fills_main_screen(app);
+    let want = playing && synced && !scene_has_lyrics && !covered && !player_full;
+    // Why they're hidden, so it can be said (Settings, a one-time toast).
+    let status = app
+        .try_state::<std::sync::Arc<LyricsService>>()
+        .map(|l| l.view().status)
+        .unwrap_or("none");
+    set_hint(
+        app,
+        match () {
+            _ if !playing || scene_has_lyrics => None,
+            _ if !synced => match status {
+                "plain" => Some(Hint::new(
+                    "plain",
+                    "This song has only unsynced lyrics, so they can't float on the desktop.",
+                )),
+                "instrumental" => Some(Hint::new("instrumental", "Instrumental: no lyrics.")),
+                "none" => Some(Hint::new("none", "No synced lyrics found for this song.")),
+                _ => None, // still looking
+            },
+            _ if covered => Some(Hint::new(
+                "fullscreen_app",
+                "Lyrics are hidden during full-screen games and videos. Turn on Show over full-screen games to keep them.",
+            )),
+            _ if player_full => Some(Hint::new(
+                "music_app_fullscreen",
+                format!(
+                    "Lyrics are hidden while {} fills the screen. Make it smaller to see them.",
+                    playing_source(app).unwrap_or_else(|| "the music app".into())
+                ),
+            )),
+            _ => None,
+        },
+    );
     let shown = window.is_visible().unwrap_or(false);
     if want != shown {
         let result = if want { window.show() } else { window.hide() };
@@ -110,6 +142,80 @@ fn apply(app: &AppHandle, playing: bool) {
             tracing::warn!("lyrics window: {e}");
         }
     }
+}
+
+/// Why the floating lyrics aren't showing, in words.
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+pub struct Hint {
+    pub reason: &'static str,
+    pub text: String,
+}
+
+impl Hint {
+    fn new(reason: &'static str, text: impl Into<String>) -> Self {
+        Self {
+            reason,
+            text: text.into(),
+        }
+    }
+}
+
+static HINT: std::sync::Mutex<Option<Hint>> = std::sync::Mutex::new(None);
+
+/// Reasons explained once with a toast. Not the game one: a toast must not
+/// pop up over a game uninvited.
+const TOAST_ONCE: [&str; 2] = ["music_app_fullscreen", "plain"];
+
+/// Stores the current hint; on a change, tells the windows ("lyrics-hint")
+/// and, the first time ever for some reasons, shows a toast.
+fn set_hint(app: &AppHandle, hint: Option<Hint>) {
+    let changed = match HINT.lock() {
+        Ok(mut h) if *h != hint => {
+            *h = hint.clone();
+            true
+        }
+        _ => false,
+    };
+    if !changed {
+        return;
+    }
+    let _ = app.emit("lyrics-hint", &hint);
+    let Some(hint) = hint.filter(|h| TOAST_ONCE.contains(&h.reason)) else {
+        return;
+    };
+    let seen = crate::current_settings(app)
+        .hints_seen
+        .iter()
+        .any(|r| r == hint.reason);
+    if seen {
+        return;
+    }
+    tracing::info!("lyrics hint (first time): {}", hint.text);
+    crate::osd::show(app, crate::osd::Toast::new("lyrics", hint.text.clone()));
+    let reason = hint.reason.to_string();
+    crate::update_settings(app, |s| {
+        if !s.hints_seen.contains(&reason) {
+            s.hints_seen.push(reason);
+        }
+    });
+}
+
+/// Why lyrics are hidden right now, for a window that just opened.
+#[tauri::command]
+pub fn lyrics_hint() -> Option<Hint> {
+    HINT.lock().ok().and_then(|h| h.clone())
+}
+
+/// The playing app's name ("Spotify").
+fn playing_source(app: &AppHandle) -> Option<String> {
+    app.try_state::<std::sync::Arc<crate::hub::Shared>>()
+        .and_then(|s| {
+            s.snapshot
+                .lock()
+                .ok()
+                .and_then(|s| s.track.as_ref().map(|t| t.source.clone()))
+        })
+        .filter(|s| !s.is_empty())
 }
 
 /// The music app itself (e.g. Spotify) is in front and fills the main screen:

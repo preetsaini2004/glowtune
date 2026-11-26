@@ -27,6 +27,12 @@
     --lyrics-size: 50px;
     --font-ui: "Instrument Sans Variable", "Segoe UI Variable Text", system-ui, sans-serif;
     --font-lyrics: "Bricolage Grotesque Variable", "Segoe UI Variable Display", system-ui, sans-serif;
+    /* Glowtune's own fonts, never changed by a theme: the Settings window,
+       the update card, and titles that aren't lyrics (headings, the clock).
+       A theme's "Interface font" sets --font-ui, its "Lyrics font" sets
+       --font-lyrics, and those reach only the player and the lyrics. */
+    --font-app: "Instrument Sans Variable", "Segoe UI Variable Text", system-ui, sans-serif;
+    --font-display: "Bricolage Grotesque Variable", "Segoe UI Variable Display", system-ui, sans-serif;
     color-scheme: dark;
     font-family: var(--font-ui);
     color: var(--ink);

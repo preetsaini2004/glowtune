@@ -21,7 +21,19 @@ import { np } from "./nowPlaying.svelte";
 const W = 1080;
 const H = 1350;
 const PAD = 96;
-const LYRIC_FONT = '"Bricolage Grotesque Variable", "Segoe UI Variable Display", "Nirmala UI", system-ui, sans-serif';
+const DEFAULT_LYRIC_FONT = '"Bricolage Grotesque Variable", "Segoe UI Variable Display", "Nirmala UI", system-ui, sans-serif';
+
+/** The theme's lyrics font (Settings › Themes › Lyrics font), with Nirmala UI
+ * kept for Hindi and Punjabi script. */
+function lyricFont(): string {
+  const theme = getComputedStyle(document.documentElement).getPropertyValue("--font-lyrics").trim();
+  if (!theme) return DEFAULT_LYRIC_FONT;
+  if (theme.includes("Nirmala UI")) return theme;
+  // Before the generic fallbacks, which would otherwise win.
+  return theme.includes("system-ui")
+    ? theme.replace("system-ui", `"Nirmala UI", system-ui`)
+    : `${theme.replace(/[\s,]+$/, "")}, "Nirmala UI", sans-serif`;
+}
 const UI_FONT = '"Instrument Sans Variable", "Segoe UI Variable Text", "Nirmala UI", system-ui, sans-serif';
 
 export type CardInput = { line: string; title: string; artist: string; art: string | null; palette: string[] };
@@ -69,6 +81,7 @@ function fitLine(ctx: CanvasRenderingContext2D, text: string, max: number): stri
 }
 
 export async function drawLyricCard(c: CardInput): Promise<Blob> {
+  const LYRIC_FONT = lyricFont();
   await Promise.all([
     document.fonts.load(`800 90px ${LYRIC_FONT}`),
     document.fonts.load(`600 34px ${UI_FONT}`),

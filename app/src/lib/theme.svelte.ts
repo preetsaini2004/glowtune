@@ -93,7 +93,7 @@ class ThemeState {
   async start() {
     await listen<Theme>("theme", (e) => this.apply(e.payload));
     try {
-      this.apply(await invoke<Theme>("get_theme"));
+      this.apply(await invoke<Theme>("get_shown_theme"));
     } catch {
       // Older backend / no theme yet: keep the built-in CSS defaults.
     }

@@ -6,7 +6,10 @@
 //!  Ctrl+Alt+↑ / ↓  volume up / down   Ctrl+Alt+D  desktop scene on/off
 //!  Ctrl+Alt+1..9   your presets       Ctrl+Alt+N  next preset
 //!  Ctrl+Alt+S      sleep timer (15 → 30 → 45 → 60 min → end of song → off)
-//!  Ctrl+Alt+C      lyric card of the line being sung (PicturesGlowtune)
+//!  Ctrl+Alt+C      lyric card of the line being sung (Pictures\Glowtune)
+//!  Ctrl+Alt+O      Settings ("options"; again closes it)
+//!  Ctrl+Alt+, / .  lyrics later / earlier (0.25 s; hold to repeat)
+//!  Ctrl+Alt+T      lyrics timing back to 0 s ("sync")
 //! ```
 //! Ctrl+Alt on purpose: Ctrl+arrows alone move the cursor word by word in
 //! every text box, so a global Ctrl+→ would break typing everywhere.
@@ -38,6 +41,10 @@ enum Action {
     Scene,
     Sleep,
     Card,
+    Settings,
+    LyricsLater,
+    LyricsEarlier,
+    LyricsSync,
     NextPreset,
     Preset(usize),
 }
@@ -56,6 +63,8 @@ const VK_LEFT: u32 = 0x25;
 const VK_UP: u32 = 0x26;
 const VK_RIGHT: u32 = 0x27;
 const VK_DOWN: u32 = 0x28;
+const VK_OEM_COMMA: u32 = 0xBC;
+const VK_OEM_PERIOD: u32 = 0xBE;
 
 const fn key(vk: u32, name: &'static str, action: Action, label: &'static str) -> Key {
     Key {
@@ -67,7 +76,7 @@ const fn key(vk: u32, name: &'static str, action: Action, label: &'static str) -
     }
 }
 
-const KEYS: [Key; 20] = [
+const KEYS: [Key; 24] = [
     key(VK_SPACE, "Space", Action::PlayPause, "Play / pause"),
     key(VK_RIGHT, "→", Action::Next, "Next song"),
     key(VK_LEFT, "←", Action::Previous, "Previous song"),
@@ -89,6 +98,21 @@ const KEYS: [Key; 20] = [
     key(b'D' as u32, "D", Action::Scene, "Desktop scene on / off"),
     key(b'S' as u32, "S", Action::Sleep, "Sleep timer"),
     key(b'C' as u32, "C", Action::Card, "Lyric card of this line"),
+    key(b'O' as u32, "O", Action::Settings, "Open / close Settings"),
+    Key {
+        repeat: true,
+        ..key(VK_OEM_COMMA, ",", Action::LyricsLater, "Lyrics later")
+    },
+    Key {
+        repeat: true,
+        ..key(VK_OEM_PERIOD, ".", Action::LyricsEarlier, "Lyrics earlier")
+    },
+    key(
+        b'T' as u32,
+        "T",
+        Action::LyricsSync,
+        "Sync lyrics (timing back to 0 s)",
+    ),
     key(b'N' as u32, "N", Action::NextPreset, "Next preset"),
     key(b'1' as u32, "1", Action::Preset(0), "Preset 1"),
     key(b'2' as u32, "2", Action::Preset(1), "Preset 2"),
@@ -103,6 +127,9 @@ const KEYS: [Key; 20] = [
 
 /// Volume step per press (5 %).
 const VOLUME_STEP: f32 = 0.05;
+/// Lyrics timing step per press (Settings' buttons move 0.5 s; the number
+/// box is for anything finer).
+const LYRICS_STEP_MS: i64 = 250;
 /// Posted to the hotkey thread: wParam 1 = register, 0 = unregister.
 const WM_SET: u32 = 0x8000 + 1; // WM_APP + 1
 
@@ -414,6 +441,19 @@ fn run_action(app: &AppHandle, action: Action) {
                 osd::show(&app, Toast::new("sleep", crate::sleep::describe(&view)));
             }
             Action::Card => crate::card::request(&app),
+            // No toast: the Settings window itself is the answer.
+            Action::Settings => {
+                crate::toggle_settings(&app);
+            }
+            Action::LyricsLater | Action::LyricsEarlier => {
+                let delta = if action == Action::LyricsEarlier {
+                    LYRICS_STEP_MS
+                } else {
+                    -LYRICS_STEP_MS
+                };
+                osd::show(&app, Toast::new("timing", nudge_lyrics(&app, delta)));
+            }
+            Action::LyricsSync => osd::show(&app, Toast::new("timing", sync_lyrics(&app))),
             Action::NextPreset => {
                 let count = crate::current_settings(&app).scene_presets.len();
                 if count == 0 {
@@ -427,6 +467,70 @@ fn run_action(app: &AppHandle, action: Action) {
             Action::Preset(i) => apply_preset(&app, i),
         }
     });
+}
+
+/// The lyrics service, when there are synced lyrics to move.
+fn synced_lyrics(
+    app: &AppHandle,
+) -> Result<std::sync::Arc<crate::lyrics_service::LyricsService>, &'static str> {
+    let lyrics = app
+        .try_state::<std::sync::Arc<crate::lyrics_service::LyricsService>>()
+        .ok_or("Lyrics aren't ready")?
+        .inner()
+        .clone();
+    if lyrics.view().status != "synced" {
+        return Err("No synced lyrics for this song");
+    }
+    Ok(lyrics)
+}
+
+/// The scene menu's timing buttons ("later", "earlier", "sync"): the same
+/// as the hotkeys, answered with the same sentence the toast shows.
+#[tauri::command]
+pub fn lyrics_timing(app: AppHandle, action: String) -> String {
+    match action.as_str() {
+        "later" => nudge_lyrics(&app, -LYRICS_STEP_MS),
+        "earlier" => nudge_lyrics(&app, LYRICS_STEP_MS),
+        _ => sync_lyrics(&app),
+    }
+}
+
+/// Ctrl+Alt+, / . : the toast's text.
+fn nudge_lyrics(app: &AppHandle, delta_ms: i64) -> String {
+    let lyrics = match synced_lyrics(app) {
+        Ok(l) => l,
+        Err(e) => return e.into(),
+    };
+    match lyrics.nudge(app, delta_ms) {
+        Ok(offset) => format!(
+            "Lyrics {} · {}",
+            if delta_ms > 0 { "earlier" } else { "later" },
+            timing(offset)
+        ),
+        Err(e) => e,
+    }
+}
+
+/// Ctrl+Alt+T: the toast's text.
+fn sync_lyrics(app: &AppHandle) -> String {
+    let lyrics = match synced_lyrics(app) {
+        Ok(l) => l,
+        Err(e) => return e.into(),
+    };
+    match lyrics.set_offset(app, 0) {
+        Ok(_) => "Lyrics synced · 0 s".into(),
+        Err(e) => e,
+    }
+}
+
+/// The timing in use, as Settings shows it: "in sync", "+0.75 s".
+fn timing(offset_ms: i64) -> String {
+    if offset_ms == 0 {
+        return "in sync".into();
+    }
+    let s = format!("{:.2}", offset_ms.abs() as f64 / 1000.0);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    format!("{}{s} s", if offset_ms > 0 { "+" } else { "−" })
 }
 
 fn no_presets() -> Toast {
@@ -491,14 +595,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn every_key_is_unique_and_only_volume_repeats() {
+    fn the_timing_toast_reads_like_settings() {
+        assert_eq!(super::timing(0), "in sync");
+        assert_eq!(super::timing(750), "+0.75 s");
+        assert_eq!(super::timing(-1500), "−1.5 s");
+        assert_eq!(super::timing(2000), "+2 s");
+    }
+
+    #[test]
+    fn every_key_is_unique_and_only_volume_and_lyrics_timing_repeat() {
         for (i, a) in KEYS.iter().enumerate() {
             for b in &KEYS[i + 1..] {
                 assert_ne!(a.vk, b.vk, "{} and {} share a key", a.label, b.label);
             }
             assert_eq!(
                 a.repeat,
-                matches!(a.action, Action::VolumeUp | Action::VolumeDown)
+                matches!(
+                    a.action,
+                    Action::VolumeUp
+                        | Action::VolumeDown
+                        | Action::LyricsLater
+                        | Action::LyricsEarlier
+                )
             );
         }
     }

@@ -12,7 +12,7 @@ shows synced lyrics, and turns your desktop into a live music scene.
 
 <sub>▶ Watch the 0.2 launch film (75 s): <a href="../../releases/latest">glowtune-0.2-hero.mp4</a> on the latest release.</sub>
 
-[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-04) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
+[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-05) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
 
 </div>
 
@@ -21,6 +21,27 @@ shows synced lyrics, and turns your desktop into a live music scene.
 > **🔊 Volume tip.** Turn the volume **all the way up inside Spotify, YouTube Music or SoundCloud**, then set how loud you want it with **Glowtune's** volume (the dock, mini player or Ctrl+Alt+↑/↓). With Automix, Crossfade or the Equalizer on, Glowtune's volume and the service's own slider are separate and don't follow each other, so a low service slider makes everything quieter.
 
 ---
+
+## What's new in 0.5
+
+Lyrics that stay in time, a simpler Settings, and a way to tell us what you think.
+
+### 🎯 Lyrics that stay in time
+- Glowtune now lines up the lyrics by itself for songs in **Spotify, Chrome, Edge, Brave, Firefox** and other apps, not only inside Glowtune. It listens for where the singer comes in, then moves the lyrics to match.
+- Still off? **Ctrl+Alt+,** and **Ctrl+Alt+.** move them later or earlier from anywhere, even mid-game, and **Ctrl+Alt+T** syncs them back to 0 s. The same **Later / Sync / Earlier** are in the scene menu and in **Settings › Lyrics**, where you can also type the exact timing. It's saved per song.
+- When the floating lyrics hide on purpose (your music app fills the screen, or the song has only unsynced lyrics), Glowtune tells you why.
+
+### ⚙️ A simpler Settings
+- **Search finds the setting itself**, typos and all ("revers moton" finds Reverse motion), and jumps right to it. **Ctrl+F** to search.
+- **Ctrl+Alt+O** opens Settings from anywhere, or double-click the tray icon.
+- All the lyrics settings (animation, position, size, font) live in **Settings › Lyrics** now, each able to follow the theme.
+- A theme's fonts stay on the player and the lyrics; the Settings window keeps its own.
+
+### 💬 Feedback from the app
+**Settings › Feedback**: tell us about a bug, an idea or what you think, right from Glowtune. No account needed. It's sent only when you press Send; see [Privacy](PRIVACY.md).
+
+### ✨ What's new, in the app
+After an update, a small card shows what changed.
 
 ## What's new in 0.4
 
@@ -89,6 +110,8 @@ Control the music from any app, even mid-game. A small toast shows what each key
 | **↑ / ↓** | Volume | **D** | Desktop scene on / off |
 | **S** | Sleep timer | **C** | Lyric card |
 | **1–9** | Your presets | **N** | Next preset |
+| **, / .** | Lyrics later / earlier | **T** | Sync lyrics (back to 0 s) |
+| **O** | Open Settings | | |
 
 On keyboards where Ctrl+Alt types characters (AltGr), those keys stay free for typing.
 
@@ -174,7 +197,7 @@ See the next songs from the player's own queue, with their covers, and click one
 <img src="docs/media/upnext.webp" width="100%" alt="Up next from the player queue" />
 
 ### Controls everywhere
-- **Hotkeys from any app:** Ctrl+Alt+**Space** play / pause, **←/→** previous / next, **↑/↓** volume, **L** lyrics, **P** mini player, **D** scene, **S** sleep timer, **C** lyric card, **1–9** presets. Full list in Settings → Hotkeys.
+- **Hotkeys from any app:** Ctrl+Alt+**Space** play / pause, **←/→** previous / next, **↑/↓** volume, **L** lyrics, **P** mini player, **D** scene, **S** sleep timer, **C** lyric card, **, / .** lyrics later / earlier, **T** sync lyrics, **O** Settings, **1–9** presets. Full list in Settings → Hotkeys.
 - **F7**: previous. **F8** or **Space**: play / pause. **F9**: next, while the scene is in front. (On many laptops the F keys need the **Fn** key.)
 - Hover Glowtune on the taskbar for previous, play / pause and next buttons.
 - Volume, shuffle, repeat and like from the dock.
@@ -203,7 +226,7 @@ Switch the whole look in one click, or make your own theme as a small text file.
 Windows shows this for new downloads that haven't built up a reputation with Microsoft yet. It isn't a virus warning. To be sure the file is the one we published, compare its fingerprint with the `SHA256SUMS.txt` on the release page:
 
 ```powershell
-Get-FileHash .\Glowtune_0.4.0_x64-setup.exe
+Get-FileHash .\Glowtune_0.5.0_x64-setup.exe
 ```
 
 If they match, click **More info → Run anyway**. Never turn off Microsoft Defender for any app.
@@ -284,7 +307,7 @@ This is an early build, so bugs are expected. Your reports help a lot.
 - [Open an issue on GitHub](../../issues/new/choose), or
 - email **[Preet.saini.0@outlook.com](mailto:Preet.saini.0@outlook.com)**.
 
-Tell us what you did, what happened, and what you were playing. A screenshot helps. Glowtune also has these buttons in Settings → About. Security problems: see [SECURITY.md](SECURITY.md).
+Tell us what you did, what happened, and what you were playing. A screenshot helps. Or send it from Glowtune: **Settings → Feedback**. Security problems: see [SECURITY.md](SECURITY.md).
 
 ## Inspired by, with thanks
 

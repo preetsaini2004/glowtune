@@ -29,6 +29,9 @@ if [[ "$what" == "all" || "$what" == "ui" ]]; then
   node --test app/src-tauri/src/music_snapshot.test.cjs
   step "emoji words"
   node --test scripts/emoji.test.ts
+  node --test scripts/settings-search.test.ts
+  node --test scripts/lyrics-timing.test.ts
+  node --test scripts/feedback.test.ts
   step "vite build"
   pnpm -C app build
 fi

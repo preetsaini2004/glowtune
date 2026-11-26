@@ -112,6 +112,22 @@ pub struct Settings {
     /// A version the user chose to skip: no pop-up for it. Set only by
     /// `update::skip_update`, so a window's stale copy can't undo it.
     pub skipped_update: String,
+    /// Lyrics choices that override the theme's (Settings → Lyrics). Empty or
+    /// 0 = use the theme's own. See [`Settings::lyrics_over`].
+    /// Animation: "rise", "karaoke" or "static".
+    pub lyrics_motion: String,
+    /// Where on screen: "bottom-center", "center" or "top-center".
+    pub lyrics_place: String,
+    /// Text size in px, 16..=96.
+    pub lyrics_size: u32,
+    /// One of [`LYRIC_FONTS`].
+    pub lyrics_font: String,
+    /// Hints already explained with a toast (see `lyrics_gate`), so each
+    /// shows once ever. Set by Rust only.
+    pub hints_seen: Vec<String>,
+    /// The Glowtune version last started, for the "What's new" card after an
+    /// update (see `update::whats_new_on_start`). Set by Rust only.
+    pub last_seen_version: String,
 }
 
 impl Default for Settings {
@@ -165,11 +181,61 @@ impl Default for Settings {
             scene_presets: Vec::new(),
             update_check: true,
             skipped_update: String::new(),
+            lyrics_motion: String::new(),
+            lyrics_place: String::new(),
+            lyrics_size: 0,
+            lyrics_font: String::new(),
+            hints_seen: Vec::new(),
+            last_seen_version: String::new(),
         }
     }
 }
 
+/// Fonts the lyrics can use (the same four the theme editor offers).
+pub const LYRIC_FONTS: [&str; 4] = [
+    "Instrument Sans",
+    "Bricolage Grotesque",
+    "Segoe UI",
+    "Georgia",
+];
+
 impl Settings {
+    /// Puts your lyrics choices (Settings → Lyrics) on top of `theme`, which
+    /// is what every window is sent. The theme file keeps its own values, so
+    /// "Use the theme's" brings them back.
+    pub fn lyrics_over(&self, theme: &mut themes::Theme) {
+        fn parse<T: serde::de::DeserializeOwned>(s: &str) -> Option<T> {
+            serde_json::from_value(serde_json::Value::String(s.into())).ok()
+        }
+        if let Some(style) = parse(&self.lyrics_motion) {
+            theme.lyrics.style = style;
+        }
+        if let Some(position) = parse(&self.lyrics_place) {
+            theme.lyrics.position = position;
+        }
+        if self.lyrics_size != 0 {
+            theme.font.lyrics_size = self.lyrics_size;
+        }
+        if !self.lyrics_font.is_empty() {
+            theme.font.lyrics_family.clone_from(&self.lyrics_font);
+        }
+    }
+
+    /// True when the lyrics choices differ (the theme must be sent again).
+    pub fn lyrics_differ(&self, other: &Self) -> bool {
+        (
+            &self.lyrics_motion,
+            &self.lyrics_place,
+            self.lyrics_size,
+            &self.lyrics_font,
+        ) != (
+            &other.lyrics_motion,
+            &other.lyrics_place,
+            other.lyrics_size,
+            &other.lyrics_font,
+        )
+    }
+
     /// Repairs values that could break things (settings files can be hand-edited).
     pub fn sanitized(mut self) -> Self {
         let valid_id = !self.active_theme.is_empty()
@@ -211,6 +277,24 @@ impl Settings {
             "theme" | "stars" | "rain" | "shards" | "code" | "melt"
         ) {
             self.desktop_lyrics_style = "theme".to_string();
+        }
+        if !matches!(
+            self.lyrics_motion.as_str(),
+            "" | "rise" | "karaoke" | "static"
+        ) {
+            self.lyrics_motion.clear();
+        }
+        if !matches!(
+            self.lyrics_place.as_str(),
+            "" | "bottom-center" | "center" | "top-center"
+        ) {
+            self.lyrics_place.clear();
+        }
+        if self.lyrics_size != 0 {
+            self.lyrics_size = self.lyrics_size.clamp(16, 96);
+        }
+        if !self.lyrics_font.is_empty() && !LYRIC_FONTS.contains(&self.lyrics_font.as_str()) {
+            self.lyrics_font.clear();
         }
         if !matches!(self.player_size.as_str(), "s" | "m" | "l") {
             self.player_size = "m".to_string();
@@ -480,5 +564,62 @@ mod update_tests {
         let back: Settings = serde_json::from_str(&serde_json::to_string(&s).unwrap()).unwrap();
         assert!(!back.update_check);
         assert_eq!(back.skipped_update, "0.4.0");
+    }
+}
+
+#[cfg(test)]
+mod lyrics_override_tests {
+    use super::*;
+    use themes::{LyricsPosition, LyricsStyle, Theme};
+
+    fn theme() -> Theme {
+        let mut t = Theme::default();
+        t.lyrics.style = LyricsStyle::Karaoke;
+        t.lyrics.position = LyricsPosition::TopCenter;
+        t.font.lyrics_size = 40;
+        t.font.lyrics_family = "Georgia".into();
+        t
+    }
+
+    #[test]
+    fn by_default_the_theme_decides() {
+        let mut t = theme();
+        Settings::default().lyrics_over(&mut t);
+        assert_eq!(t, theme());
+    }
+
+    #[test]
+    fn your_choices_win_over_the_theme() {
+        let s = Settings {
+            lyrics_motion: "static".into(),
+            lyrics_place: "center".into(),
+            lyrics_size: 72,
+            lyrics_font: "Segoe UI".into(),
+            ..Default::default()
+        };
+        let mut t = theme();
+        s.lyrics_over(&mut t);
+        assert_eq!(t.lyrics.style, LyricsStyle::Static);
+        assert_eq!(t.lyrics.position, LyricsPosition::Center);
+        assert_eq!(t.font.lyrics_size, 72);
+        assert_eq!(t.font.lyrics_family, "Segoe UI");
+        // Only the lyrics: the rest of the theme is untouched.
+        assert_eq!(t.font.family, theme().font.family);
+        assert_eq!(t.glow, theme().glow);
+    }
+
+    #[test]
+    fn bad_values_fall_back_to_the_theme() {
+        let s: Settings = serde_json::from_str(
+            r#"{"lyricsMotion":"bounce","lyricsPlace":"left","lyricsSize":500,"lyricsFont":"Comic Sans"}"#,
+        )
+        .unwrap();
+        let s = s.sanitized();
+        assert_eq!(s.lyrics_motion, "");
+        assert_eq!(s.lyrics_place, "");
+        assert_eq!(s.lyrics_size, 96);
+        assert_eq!(s.lyrics_font, "");
+        assert!(s.lyrics_differ(&Settings::default()));
+        assert!(!Settings::default().lyrics_differ(&Settings::default()));
     }
 }

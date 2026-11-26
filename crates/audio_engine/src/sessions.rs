@@ -53,6 +53,48 @@ pub fn process_tree(root: u32) -> Vec<u32> {
     tree
 }
 
+/// The main processes of a program (`exe`, e.g. "spotify.exe", any case):
+/// those whose parent isn't the same program. Their trees hold every
+/// helper (a browser's audio process).
+pub fn roots_named(exe: &str) -> Vec<u32> {
+    let mut all = Vec::new();
+    // SAFETY: plain toolhelp snapshot walk; the handle is closed below.
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else {
+            return Vec::new();
+        };
+        let mut entry = PROCESSENTRY32W {
+            dwSize: size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snap, &mut entry).is_ok() {
+            loop {
+                let len = entry
+                    .szExeFile
+                    .iter()
+                    .position(|&c| c == 0)
+                    .unwrap_or(entry.szExeFile.len());
+                let name = String::from_utf16_lossy(&entry.szExeFile[..len]);
+                all.push((entry.th32ProcessID, entry.th32ParentProcessID, name));
+                if Process32NextW(snap, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+    let named: Vec<(u32, u32)> = all
+        .iter()
+        .filter(|(_, _, n)| n.eq_ignore_ascii_case(exe))
+        .map(|(p, pp, _)| (*p, *pp))
+        .collect();
+    named
+        .iter()
+        .filter(|(_, parent)| !named.iter().any(|(p, _)| p == parent))
+        .map(|(p, _)| *p)
+        .collect()
+}
+
 /// Volume controls of every audio session owned by `pids` on the default output.
 /// COM must be initialized on the calling thread.
 pub fn session_volumes(pids: &[u32]) -> windows::core::Result<Vec<(u32, ISimpleAudioVolume)>> {

@@ -2,7 +2,7 @@
   // Settings: a sidebar of sections, a search box to jump between them.
   // Every change applies live (the glow updates while you drag) and is saved
   // automatically.
-  import { onMount, untrack } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import { fade } from "svelte/transition";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
@@ -13,7 +13,11 @@
   import Store from "$lib/Store.svelte";
   import SoundControls, { type SoundSettings } from "$lib/SoundControls.svelte";
   import ReleaseNotes from "$lib/ReleaseNotes.svelte";
+  import FeedbackForm from "$lib/FeedbackForm.svelte";
   import { updates, ago, releaseDay } from "$lib/update.svelte";
+  import { theme, FONT_STACKS } from "$lib/theme.svelte";
+  import { searchSettings, didYouMean, SECTION_NAMES, type SettingHit } from "$lib/settingsIndex";
+  import { parseOffset, formatOffset } from "$lib/lyricsTiming";
 
   type Settings = {
     glowEnabled: boolean;
@@ -41,6 +45,10 @@
     hotkeys: boolean;
     listeningHistory: boolean;
     updateCheck: boolean;
+    lyricsMotion: string;
+    lyricsPlace: string;
+    lyricsSize: number;
+    lyricsFont: string;
   } & SoundSettings;
   type Top = { title: string; artist: string; plays: number; ms: number };
   type Stats = {
@@ -55,12 +63,12 @@
   };
   type Range = "week" | "month" | "year" | "all";
   type Monitor = { name: string; primary: boolean; width: number; height: number };
-  type LyricsInfo = { status: string; offsetMs: number };
-  type SectionId = "lyrics" | "scene" | "glow" | "sound" | "services" | "themes" | "store" | "player" | "listening" | "keys" | "about";
+  type LyricsInfo = { status: string; offsetMs: number; lines?: { timeMs: number; text: string }[] };
+  type SectionId = "lyrics" | "scene" | "glow" | "sound" | "services" | "themes" | "store" | "player" | "listening" | "keys" | "feedback" | "about";
   type Hotkey = { keys: string; label: string; ok: boolean; note: string | null };
 
   const SECTIONS: { id: SectionId; name: string; icon: string; words: string }[] = [
-    { id: "lyrics", name: "Lyrics", icon: "M4 6h16M4 12h10M4 18h13", words: "lyrics desktop timing sync offset style karaoke flow" },
+    { id: "lyrics", name: "Lyrics", icon: "M4 6h16M4 12h10M4 18h13", words: "lyrics desktop timing sync offset style karaoke flow animation rise still position top middle bottom size font" },
     { id: "scene", name: "Desktop scene", icon: "M3 5h18v12H3zM8 21h8M12 17v4", words: "desktop scene wallpaper clock full screen recently played background motion" },
     { id: "glow", name: "Edge glow", icon: "M4 4h16v16H4zM8 8h8v8H8z", words: "glow edge light screens monitors fullscreen games" },
     { id: "sound", name: "Sound", icon: "M4 9v6M8 5v14M12 8v8M16 4v16M20 10v4", words: "sound equalizer eq bass treble presets crossfade automix blend audio effects" },
@@ -69,7 +77,8 @@
     { id: "store", name: "Store", icon: "M3 8h18v13H3zM3 12h18M7 8V3h10v5M8 15v3M16 15v3", words: "store crate themes scene looks presets extensions install free" },
     { id: "player", name: "Player", icon: "M4 15h16v5H4zM8 4v8M16 4v8", words: "player mini on top" },
     { id: "listening", name: "Listening", icon: "M4 20V10M9 20V4M14 20v-7M19 20v-11", words: "listening stats history wrapped top songs artists hours played" },
-    { id: "keys", name: "Hotkeys", icon: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10", words: "hotkeys shortcuts keyboard keys play pause next volume presets sleep timer" },
+    { id: "keys", name: "Hotkeys", icon: "M3 7h18v10H3zM7 11h.01M11 11h.01M15 11h.01M7 14h10", words: "hotkeys shortcuts keyboard keys play pause next volume presets sleep timer open settings options ctrl alt o" },
+    { id: "feedback", name: "Feedback", icon: "M4 5h16v11H9l-5 4zM8 9h8M8 12h5", words: "feedback send message bug report complaint idea feature request review rate help contact support email" },
     { id: "about", name: "About", icon: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8h.01", words: "about version update updates new version upgrade check for updates release notes" },
   ];
   const SERVICES = [
@@ -97,6 +106,8 @@
   let s = $state<Settings | null>(null);
   let monitors = $state<Monitor[]>([]);
   let lyrics = $state<LyricsInfo>({ status: "none", offsetMs: 0 });
+  /** Why the floating lyrics are hidden right now (lyrics_gate). */
+  let lyricsHint = $state<{ reason: string; text: string } | null>(null);
   let error = $state("");
   let blocked = $state(0);
   let rules = $state<number | null>(null);
@@ -183,11 +194,6 @@
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
 
   const palette = $derived(np.palette);
-  const shown = $derived(
-    query.trim()
-      ? SECTIONS.filter((x) => (x.name + " " + x.words).toLowerCase().includes(query.trim().toLowerCase()))
-      : SECTIONS,
-  );
   const current = $derived(SECTIONS.find((x) => x.id === section)!);
 
   onMount(() => {
@@ -203,6 +209,8 @@
     invoke<number>("adblock_rules").then((n) => (rules = n)).catch(() => {});
     getVersion().then((v) => (version = v)).catch(() => {});
     const un = listen<LyricsInfo>("lyrics", (e) => (lyrics = e.payload));
+    invoke<{ reason: string; text: string } | null>("lyrics_hint").then((h) => (lyricsHint = h)).catch(() => {});
+    const unHint = listen<{ reason: string; text: string } | null>("lyrics-hint", (e) => (lyricsHint = e.payload));
     // The tray and the desktop scene change settings too: stay in sync.
     const unSettings = listen<Settings>("settings", (e) => (s = e.payload));
     const unTab = listen<string>("settings-tab", (e) => {
@@ -214,6 +222,7 @@
     });
     return () => {
       un.then((f) => f());
+      unHint.then((f) => f());
       unSettings.then((f) => f());
       unTab.then((f) => f());
     };
@@ -261,13 +270,106 @@
     }
   }
 
+  // ---- Lyrics timing: Later / the number box / Earlier, and Sync (back to 0 s) ----
+  /** What the number box shows while typing (null = the real offset). */
+  let offsetDraft = $state<string | null>(null);
+  let offsetError = $state("");
+  const synced = $derived(lyrics.status === "synced");
+
+  async function setOffset(ms: number) {
+    try {
+      await invoke("set_lyrics_offset", { offsetMs: ms });
+      offsetError = "";
+      return true;
+    } catch (e) {
+      offsetError = String(e);
+      return false;
+    }
+  }
+
+  async function offsetKeys(e: KeyboardEvent) {
+    const input = e.currentTarget as HTMLInputElement;
+    if (e.key === "Enter") {
+      const parsed = parseOffset(input.value);
+      if ("error" in parsed) {
+        offsetError = parsed.error;
+        return;
+      }
+      if (await setOffset(parsed.ms)) {
+        offsetDraft = null;
+        input.blur();
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      offsetDraft = null;
+      offsetError = "";
+      input.blur();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const parsed = parseOffset(input.value);
+      const base = "ms" in parsed ? parsed.ms : lyrics.offsetMs;
+      const next = base + (e.key === "ArrowUp" ? 100 : -100);
+      if (await setOffset(next)) offsetDraft = null;
+    }
+  }
+
+  /** Sync: the lyrics file's own timing again, 0 s. */
+  async function sync() {
+    offsetDraft = null;
+    await setOffset(0);
+  }
+
+  // Search: individual settings, typos allowed (lib/settingsIndex.ts).
+  let findInput: HTMLInputElement | undefined = $state();
+  const results = $derived(query.trim() ? searchSettings(query) : []);
+  const guesses = $derived(query.trim() && !results.length ? didYouMean(query) : []);
+  let flashTimer: ReturnType<typeof setTimeout> | undefined;
+
   function searchKeys(e: KeyboardEvent) {
-    if (e.key === "Enter" && shown.length) {
-      section = shown[0].id;
+    const first = results[0] ?? guesses[0];
+    if (e.key === "Enter" && first) go(first);
+    else if (e.key === "Escape" && query) {
+      e.preventDefault();
       query = "";
     }
   }
+
+  function windowKeys(e: KeyboardEvent) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      findInput?.focus();
+      findInput?.select();
+    }
+  }
+
+  const norm = (t: string | null) => (t ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+
+  /** Opens the setting's section, scrolls to it and highlights it. */
+  async function go(hit: SettingHit) {
+    query = "";
+    section = hit.section as SectionId;
+    const label = norm(hit.label ?? hit.name);
+    // The section fades in, and the theme editor loads its theme first: look
+    // for the label for up to 1.5 s.
+    const until = performance.now() + 1500;
+    while (performance.now() < until) {
+      await tick();
+      await new Promise((r) => requestAnimationFrame(r));
+      const body = document.querySelector(".content .body");
+      const el = [...(body?.querySelectorAll("h3, span, button, legend") ?? [])].find((n) => norm(n.textContent) === label);
+      if (!el) continue;
+      const target = (el.closest(".row, .nudge, .slider, .field, .check, label, .chips") ?? el.closest(".card") ?? el) as HTMLElement;
+      target.scrollIntoView({ block: "center", behavior: "smooth" });
+      document.querySelectorAll(".flash").forEach((n) => n.classList.remove("flash"));
+      target.classList.add("flash");
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => target.classList.remove("flash"), 1800);
+      return;
+    }
+  }
 </script>
+
+<svelte:window onkeydown={windowKeys} />
 
 <main style:--c1={palette[0]} style:--c2={palette[1] ?? palette[0]}>
   <nav class="side" data-tauri-drag-region>
@@ -275,20 +377,35 @@
     <h1 data-tauri-drag-region>Settings</h1>
     <label class="find">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 17a6.5 6.5 0 1 0 0-13 6.5 6.5 0 0 0 0 13zM15.5 15.5 20 20" /></svg>
-      <input bind:value={query} onkeydown={searchKeys} placeholder="Search settings" aria-label="Search settings" spellcheck="false" />
+      <input bind:this={findInput} bind:value={query} onkeydown={searchKeys} placeholder="Search settings" title="Search settings (Ctrl+F)" aria-label="Search settings" spellcheck="false" />
     </label>
-    <ul>
-      {#each shown as x (x.id)}
-        {#if x.id === "about"}<li class="rule" aria-hidden="true"></li>{/if}
-        <li>
-          <button class:on={section === x.id} aria-current={section === x.id ? "page" : undefined} onclick={() => (section = x.id)}>
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d={x.icon} /></svg>
-            {x.name}
-          </button>
-        </li>
-      {/each}
-      {#if shown.length === 0}<li class="none">Nothing matches.</li>{/if}
-    </ul>
+    {#if query.trim()}
+      <ul class="results" aria-label="Matching settings">
+        {#if !results.length}
+          <li class="none">{guesses.length ? "Nothing matches. Did you mean:" : "Nothing matches."}</li>
+        {/if}
+        {#each results.length ? results : guesses as hit, i (hit.section + hit.name)}
+          <li>
+            <button class:first={i === 0} onclick={() => go(hit)}>
+              <span class="what">{hit.name}</span>
+              <span class="where">{SECTION_NAMES[hit.section]}</span>
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {:else}
+      <ul>
+        {#each SECTIONS as x (x.id)}
+          {#if x.id === "about"}<li class="rule" aria-hidden="true"></li>{/if}
+          <li>
+            <button class:on={section === x.id} aria-current={section === x.id ? "page" : undefined} onclick={() => (section = x.id)}>
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d={x.icon} /></svg>
+              {x.name}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </nav>
 
   <section class="content">
@@ -313,7 +430,8 @@
               <div>
                 <h3>Lyrics on desktop</h3>
                 <p class="hint">
-                  {#if lyrics.status === "synced"}Synced lyrics found for this song.
+                  {#if lyricsHint && lyricsHint.reason !== "plain" && lyricsHint.reason !== "none" && lyricsHint.reason !== "instrumental"}<span class="why">{lyricsHint.text}</span>
+                  {:else if lyrics.status === "synced"}Synced lyrics found for this song.
                   {:else if lyrics.status === "loading"}Looking up lyrics…
                   {:else if lyrics.status === "instrumental"}This song is instrumental.
                   {:else if lyrics.status === "plain"}Only unsynced lyrics exist for this song.
@@ -374,13 +492,122 @@
                 <button onclick={() => invoke("lyrics_reset_position")}>Reset</button>
               </div>
             </div>
-            <div class="nudge" class:muted={lyrics.status !== "synced"}>
-              <span>Timing for this song</span>
-              <div class="stepper">
-                <button onclick={() => nudge(-500)} disabled={lyrics.status !== "synced"} aria-label="Show lyrics later">Later</button>
-                <output>{lyrics.offsetMs === 0 ? "In sync" : `${lyrics.offsetMs > 0 ? "+" : "−"}${Math.abs(lyrics.offsetMs / 1000).toFixed(1)} s`}</output>
-                <button onclick={() => nudge(500)} disabled={lyrics.status !== "synced"} aria-label="Show lyrics earlier">Earlier</button>
+          </div>
+          <div class="card timing" class:muted={!synced}>
+            <div class="row">
+              <div>
+                <h3>Timing for this song</h3>
+                <p class="hint">
+                  {synced ? "+ shows the lyrics earlier, − later. Saved for this song." : "Only songs with synced lyrics can be timed."}
+                </p>
               </div>
+              <div class="stepper">
+                <button onclick={() => nudge(-500)} disabled={!synced} aria-label="Show lyrics later">Later</button>
+                <label class="offset" class:bad={offsetError}>
+                  <input
+                    value={offsetDraft ?? formatOffset(lyrics.offsetMs)}
+                    oninput={(e) => {
+                      offsetDraft = (e.currentTarget as HTMLInputElement).value;
+                      offsetError = "";
+                    }}
+                    onkeydown={offsetKeys}
+                    onblur={() => {
+                      offsetDraft = null;
+                      offsetError = "";
+                    }}
+                    disabled={!synced}
+                    inputmode="decimal"
+                    spellcheck="false"
+                    aria-label="Lyrics timing in seconds, + earlier, − later"
+                    title="Type seconds and press Enter. ↑ / ↓ move it 0.1 s."
+                  />
+                  <span>s</span>
+                </label>
+                <button onclick={() => nudge(500)} disabled={!synced} aria-label="Show lyrics earlier">Earlier</button>
+              </div>
+            </div>
+            {#if offsetError}<p class="hint warn">{offsetError}</p>{/if}
+            <div class="sync-row">
+              <button class="open primary" onclick={sync} disabled={!synced || lyrics.offsetMs === 0} title="Ctrl+Alt+T">Sync</button>
+              <p class="hint small">{lyrics.offsetMs === 0 ? "In sync: 0 s." : "Back to 0 s, where the lyrics line up with the song. Ctrl+Alt+T does it from anywhere."}</p>
+            </div>
+          </div>
+          <div class="card lyric-look">
+            <h3>How the floating lyrics look</h3>
+            <p class="hint">"Theme's" follows the active theme, so Store themes still look as made.</p>
+            <div class="row">
+              <div>
+                <h3 class="sub">Animation</h3>
+                <p class="hint">
+                  {s.desktopLyricsStyle === "theme" ? "For the Theme desktop look." : "Only for the Theme desktop look (Desktop look above)."}
+                </p>
+              </div>
+              <div class="chips" role="radiogroup" aria-label="Lyrics animation">
+                {#each [["", "Theme's"], ["rise", "Rise"], ["karaoke", "Karaoke"], ["static", "Still"]] as [id, name]}
+                  <button
+                    role="radio"
+                    aria-checked={s.lyricsMotion === id}
+                    class:on={s.lyricsMotion === id}
+                    disabled={s.desktopLyricsStyle !== "theme"}
+                    onclick={() => {
+                      if (s) s.lyricsMotion = id;
+                      commit();
+                    }}>{name}</button
+                  >
+                {/each}
+              </div>
+            </div>
+            <div class="row">
+              <h3 class="sub">Position</h3>
+              <div class="chips" role="radiogroup" aria-label="Lyrics position">
+                {#each [["", "Theme's"], ["bottom-center", "Bottom"], ["center", "Middle"], ["top-center", "Top"]] as [id, name]}
+                  <button
+                    role="radio"
+                    aria-checked={s.lyricsPlace === id}
+                    class:on={s.lyricsPlace === id}
+                    onclick={() => {
+                      if (s) s.lyricsPlace = id;
+                      commit();
+                    }}>{name}</button
+                  >
+                {/each}
+              </div>
+            </div>
+            <div class="row">
+              <h3 class="sub">Size</h3>
+              <div class="size">
+                <input
+                  type="range"
+                  min="16"
+                  max="96"
+                  step="1"
+                  aria-label="Lyrics size"
+                  value={s.lyricsSize || theme.theme?.font.lyrics_size || 50}
+                  oninput={(e) => {
+                    if (s) s.lyricsSize = Number((e.currentTarget as HTMLInputElement).value);
+                  }}
+                  onchange={commit}
+                />
+                <output>{s.lyricsSize || theme.theme?.font.lyrics_size || 50}px</output>
+                <button
+                  class="chip-btn"
+                  class:on={s.lyricsSize === 0}
+                  onclick={() => {
+                    if (s) s.lyricsSize = 0;
+                    commit();
+                  }}>Theme's</button
+                >
+              </div>
+            </div>
+            <div class="row">
+              <div>
+                <h3 class="sub">Font</h3>
+                <p class="hint">Used everywhere lyrics show: the scene, the floating lyrics, the player and lyric cards.</p>
+              </div>
+              <select class="pick" bind:value={s.lyricsFont} onchange={commit} aria-label="Lyrics font">
+                <option value="">Theme's</option>
+                {#each Object.keys(FONT_STACKS) as f}<option value={f}>{f}</option>{/each}
+              </select>
             </div>
           </div>
           <div class="card">
@@ -743,6 +970,20 @@
             </ul>
             <p class="hint small">Sleep timer: 15 → 30 → 45 → 60 min → after this song → off. Presets are saved in the scene menu.</p>
           </div>
+        {:else if section === "feedback"}
+          <div class="card">
+            <h3>Give us your feedback</h3>
+            <p class="hint">Something broken, an idea, or just what you think. Tell us here; no account needed.</p>
+          </div>
+          <FeedbackForm />
+          <div class="card">
+            <h3>Other ways</h3>
+            <div class="report">
+              <button class="open" onclick={() => invoke("open_support", { to: "issues" })}>Report on GitHub</button>
+              <button class="open" onclick={() => invoke("open_support", { to: "email" })}>Email us</button>
+              <button class="open" onclick={() => invoke("open_support", { to: "rate" })}>Rate Glowtune in the Microsoft Store</button>
+            </div>
+          </div>
         {:else if section === "about"}
           <div class="card about">
             <p class="big">Glowtune</p>
@@ -830,10 +1071,10 @@
           </div>
           <div class="card">
             <h3>Found a bug?</h3>
-            <p class="hint">Tell us what happened and what you were playing. A screenshot helps.</p>
+            <p class="hint">Tell us what happened and what you were playing, right from here.</p>
             <div class="report">
+              <button class="open primary" onclick={() => (section = "feedback")}>Send feedback</button>
               <button class="open" onclick={() => invoke("open_support", { to: "issues" })}>Report on GitHub</button>
-              <button class="open" onclick={() => invoke("open_support", { to: "email" })}>Email Preet.saini.0@outlook.com</button>
             </div>
           </div>
         {/if}
@@ -845,6 +1086,9 @@
 
 <style>
   main {
+    /* Settings keeps its own fonts: a theme's fonts are for the player and lyrics. */
+    --font-ui: var(--font-app);
+    font-family: var(--font-app);
     height: 100vh;
     display: grid;
     grid-template-columns: 210px minmax(0, 1fr);
@@ -872,7 +1116,7 @@
   }
   h1 {
     margin: 2px 8px 14px;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 24px;
     font-weight: 720;
     font-stretch: 90%;
@@ -948,6 +1192,50 @@
     background: color-mix(in oklab, var(--c1) 22%, rgba(255, 255, 255, 0.06));
     color: var(--ink);
   }
+  /* Search results: the setting, with its section under it. */
+  .results li button {
+    height: auto;
+    padding: 7px 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 1px;
+    text-align: left;
+  }
+  .results li button.first {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .results .what {
+    color: var(--ink);
+    font-size: 13px;
+    line-height: 17px;
+  }
+  .results .where {
+    color: var(--ink-faint);
+    font-size: 11.5px;
+    line-height: 15px;
+  }
+  /* The setting a search result jumped to. */
+  :global(.flash) {
+    border-radius: calc(var(--radius) * 0.6);
+    animation: flash 1.8s ease-out;
+  }
+  @keyframes flash {
+    0%,
+    30% {
+      box-shadow: 0 0 0 2px color-mix(in oklab, var(--c1) 80%, #fff);
+      background-color: color-mix(in oklab, var(--c1) 16%, transparent);
+    }
+    100% {
+      box-shadow: 0 0 0 2px transparent;
+      background-color: transparent;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    :global(.flash) {
+      animation-duration: 0.01s;
+      outline: 2px solid color-mix(in oklab, var(--c1) 80%, #fff);
+    }
+  }
   .rule {
     height: 1px;
     margin: 8px 8px;
@@ -975,7 +1263,7 @@
   }
   h2 {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 21px;
     font-weight: 700;
     font-stretch: 92%;
@@ -1059,12 +1347,16 @@
   .hint.warn {
     color: #ffcf9a;
   }
+  /* Why the floating lyrics are hidden right now. */
+  .hint .why {
+    color: #ffcf9a;
+  }
   .listen-hero {
     gap: 6px;
   }
   .spent {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 46px;
     font-weight: 800;
     letter-spacing: -0.02em;
@@ -1317,6 +1609,55 @@
     background: linear-gradient(135deg, var(--c1), var(--c2));
     border-color: transparent;
   }
+  .chips button:disabled {
+    opacity: 0.4;
+    cursor: default;
+  }
+  .lyric-look .row {
+    padding-top: 10px;
+    border-top: 1px solid var(--hairline);
+  }
+  .lyric-look .row h3.sub {
+    margin: 0;
+  }
+  .size {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .size input {
+    width: 170px;
+  }
+  .size output {
+    min-width: 40px;
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink-soft);
+  }
+  .chip-btn {
+    border: 1px solid var(--hairline);
+    background: transparent;
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-size: 12.5px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .chip-btn.on {
+    background: linear-gradient(135deg, var(--c1), var(--c2));
+    border-color: transparent;
+  }
+  .pick {
+    height: 32px;
+    min-width: 180px;
+    padding: 0 10px;
+    border: 1px solid var(--hairline);
+    border-radius: calc(var(--radius) * 0.6);
+    background: rgba(0, 0, 0, 0.25);
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+  }
   .services li {
     display: flex;
     align-items: center;
@@ -1348,7 +1689,7 @@
   }
   .about .big {
     margin: 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 30px;
     font-weight: 760;
     font-stretch: 88%;
@@ -1416,9 +1757,6 @@
     font-size: 13.5px;
     color: var(--ink-soft);
   }
-  .nudge.muted {
-    opacity: 0.45;
-  }
   .stepper {
     display: flex;
     align-items: center;
@@ -1437,6 +1775,49 @@
   }
   .stepper button:disabled {
     cursor: default;
+  }
+  /* Lyrics timing card */
+  .timing.muted .row,
+  .timing.muted .sync-row {
+    opacity: 0.55;
+  }
+  .offset {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--hairline);
+    border-radius: calc(var(--radius) * 0.6);
+    background: rgba(0, 0, 0, 0.25);
+    font-size: 13px;
+    color: var(--ink-faint);
+  }
+  .offset:focus-within {
+    border-color: color-mix(in oklab, var(--c1) 60%, transparent);
+  }
+  .offset.bad {
+    border-color: rgba(255, 120, 120, 0.6);
+  }
+  .offset input {
+    width: 52px;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+  }
+  .sync-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .sync-row .hint {
+    margin: 0;
   }
   output {
     min-width: 64px;

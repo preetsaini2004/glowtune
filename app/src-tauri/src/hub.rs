@@ -887,6 +887,23 @@ pub(crate) fn heard_position_ms(app: &AppHandle) -> Option<f64> {
     Some(p.position_ms + (now - p.reported_at_ms).max(0.0) * p.rate)
 }
 
+/// Where the song is now, as the lyrics windows see it (any app; the delay
+/// of Glowtune's sound effects counted in). For the outside-app lyrics timing.
+pub(crate) fn lyrics_position_ms(app: &AppHandle) -> Option<f64> {
+    let playback = {
+        let shared = app.try_state::<Arc<Shared>>()?;
+        let snapshot = shared.snapshot.lock().ok()?;
+        snapshot.track.as_ref()?;
+        snapshot.playback.clone()
+    };
+    let p = heard_playback(app, playback);
+    let mut pos = p.position_ms;
+    if p.status == "playing" {
+        pos += (wall_ms(Instant::now()) - p.reported_at_ms).max(0.0) * p.rate;
+    }
+    Some(pos)
+}
+
 pub(crate) fn heard_playback(app: &AppHandle, mut p: PlaybackView) -> PlaybackView {
     let web = app.try_state::<Arc<Shared>>().is_some_and(|shared| {
         shared

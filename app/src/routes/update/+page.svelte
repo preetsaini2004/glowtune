@@ -2,30 +2,74 @@
   // The update pop-up: a glass card in the bottom-right corner, shown by
   // Rust (`update.rs`) when a new version is out. Never takes focus on its
   // own and never shows over a full-screen game.
+  //
+  // `/update?whatsnew` is the same card once, on the first start after an
+  // update: what this version brought (window "whatsnew").
   import { onMount } from "svelte";
+  import { invoke } from "@tauri-apps/api/core";
   import { np } from "$lib/nowPlaying.svelte";
   import { updates, releaseDay } from "$lib/update.svelte";
   import ReleaseNotes from "$lib/ReleaseNotes.svelte";
 
-  const v = $derived(updates.view);
+  const whatsNew = new URLSearchParams(location.search).has("whatsnew");
+  let news = $state<{ version: string; notes: string } | null>(null);
+
+  const v = $derived(whatsNew ? null : updates.view);
   const busy = $derived(v?.status === "downloading" || v?.status === "installing");
   const palette = $derived(np.palette);
   const pct = $derived(Math.round((v?.progress ?? 0) * 100));
 
   onMount(() => {
     np.start();
-    updates.start();
+    if (whatsNew) {
+      invoke<{ version: string; notes: string }>("whats_new")
+        .then((n) => (news = n))
+        .catch(() => {});
+    } else {
+      updates.start();
+    }
   });
 
+  function gotIt() {
+    invoke("close_whats_new").catch(() => {});
+  }
+
   function onKey(e: KeyboardEvent) {
-    if (e.key === "Escape" && !busy) updates.later();
+    if (e.key !== "Escape") return;
+    if (whatsNew) gotIt();
+    else if (!busy) updates.later();
   }
 </script>
 
 <svelte:window onkeydown={onKey} />
 
 <main style:--c1={palette[0]} style:--c2={palette[1] ?? palette[0]}>
-  {#if v}
+  {#if news}
+    <header data-tauri-drag-region>
+      <span class="mark" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><path d="M12 3.5l2.2 5.3 5.3 2.2-5.3 2.2L12 18.5l-2.2-5.3L4.5 11l5.3-2.2z" /></svg>
+      </span>
+      <div class="titles" data-tauri-drag-region>
+        <p class="eyebrow">What's new</p>
+        <h1>Glowtune {news.version}</h1>
+        <p class="sub">Updated. Your settings, themes and sign-ins stayed.</p>
+      </div>
+      <button class="x" title="Close (Esc)" aria-label="Close" onclick={gotIt}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+      </button>
+    </header>
+
+    <section class="scroll" aria-label="What's new">
+      <ReleaseNotes notes={news.notes} />
+    </section>
+
+    <footer>
+      <div class="buttons">
+        <span class="grow"></span>
+        <button class="primary" onclick={gotIt}>Got it</button>
+      </div>
+    </footer>
+  {:else if v}
     <header data-tauri-drag-region>
       <span class="mark" aria-hidden="true">
         <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14" /></svg>
@@ -83,6 +127,8 @@
 
 <style>
   main {
+    --font-ui: var(--font-app);
+    font-family: var(--font-app);
     height: 100vh;
     display: grid;
     grid-template-rows: auto minmax(0, 1fr) auto;
@@ -142,7 +188,7 @@
   }
   h1 {
     margin: 2px 0 0;
-    font-family: var(--font-lyrics);
+    font-family: var(--font-display);
     font-size: 23px;
     font-weight: 740;
     font-stretch: 90%;

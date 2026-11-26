@@ -11,6 +11,8 @@ pub mod dj;
 pub mod engine;
 pub mod eq;
 #[cfg(windows)]
+pub mod listen;
+#[cfg(windows)]
 mod output;
 pub mod player;
 pub mod resample;
