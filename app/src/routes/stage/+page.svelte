@@ -1170,11 +1170,15 @@
     100% { transform: translate(0, 0) rotate(-360deg) scale(3.2); }
   }
   /* Other wallpapers cover the moving art: don't draw it under them. */
+  /* The playing music video covers the whole wall: the drift and the two
+     fields under it were ~15 million pixels of animated layers nobody saw. */
   .watery > .drift,
   .watery > .swirl,
   .watery > .field,
   .silky > .swirl,
-  .under-video > .swirl {
+  .under-video > .swirl,
+  .under-video > .drift,
+  .under-video > .field {
     display: none;
   }
   .plain-cover {
@@ -1490,17 +1494,21 @@
     align-items: end;
     height: 14px;
   }
+  /* Full height, squashed with scaleY (GPU work); animating `height` re-laid
+     out the page ~30 times a second. */
   .eq i {
     width: 3px;
+    height: 14px;
     border-radius: 2px;
     background: var(--c1);
+    transform-origin: 50% 100%;
     animation: eq 0.9s steps(9) infinite alternate;
   }
   .eq i:nth-child(2) { animation-delay: -0.3s; }
   .eq i:nth-child(3) { animation-delay: -0.6s; }
   @keyframes eq {
-    from { height: 3px; }
-    to { height: 14px; }
+    from { transform: scaleY(0.215); }
+    to { transform: scaleY(1); }
   }
 
   /* ── Dock ─────────────────────────────────────────── */

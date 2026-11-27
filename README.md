@@ -12,7 +12,7 @@ shows synced lyrics, and turns your desktop into a live music scene.
 
 <sub>▶ Watch the 0.2 launch film (75 s): <a href="../../releases/latest">glowtune-0.2-hero.mp4</a> on the latest release.</sub>
 
-[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-05) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
+[**Download for Windows**](../../releases/latest) · [What's new](#whats-new-in-055) · [Features](#features) · [Privacy](PRIVACY.md) · [Report a bug](#report-a-problem)
 
 </div>
 
@@ -21,6 +21,18 @@ shows synced lyrics, and turns your desktop into a live music scene.
 > **🔊 Volume tip.** Turn the volume **all the way up inside Spotify, YouTube Music or SoundCloud**, then set how loud you want it with **Glowtune's** volume (the dock, mini player or Ctrl+Alt+↑/↓). With Automix, Crossfade or the Equalizer on, Glowtune's volume and the service's own slider are separate and don't follow each other, so a low service slider makes everything quieter.
 
 ---
+
+## What's new in 0.5.5
+
+Lighter on memory and CPU, and the music keeps playing when you close its window.
+
+### 🪶 Lighter
+- **Close the music window, keep the music.** Close the Spotify, YouTube Music, SoundCloud or Apple Music window while a song plays and the music keeps going in the background, using much less memory. Open it again from Glowtune. Minimized, it stops drawing too.
+- **The desktop scene sleeps when it's covered** by a maximized app or a game, gives back its memory, and wakes the moment you can see it.
+- **Lyrics animate on the graphics card:** Stars, Orbit, Shards, the floating desktop lyrics and the equalizer bars look the same and cost less.
+
+### 🙏 Help wanted
+Most of Glowtune's memory goes to WebView2, the built-in Chrome engine that draws its windows. If you know a way to make Glowtune lighter on memory and CPU, we'd really appreciate an issue or a pull request.
 
 ## What's new in 0.5
 

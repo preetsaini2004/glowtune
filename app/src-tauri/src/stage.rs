@@ -5,22 +5,37 @@
 //! ```text
 //!  settings.stage_enabled ─► "stage" + optional "stage-<n>" windows (work area,
 //!                            always at the bottom of each screen’s window stack)
-//!  gate thread (only while open + playing, every 1 s):
+//!  gate thread (only while open: every 1 s, ¼ s while asleep, and at once on
+//!  any foreground / minimize / move change anywhere on the desktop):
 //!     another window covers ≥ 85 % of that screen? ─► "stage-covered" event
 //!         → the page freezes its animations (no frames = ~0 % GPU/CPU)
+//!     covered completely (≥ 98 %, e.g. a maximized window or a game)?
+//!         → the page is also put to sleep: WebView2 is told it's hidden and
+//!           to keep as little memory as it can, which frees its graphics memory
 //!     uncovered on the main screen ─► floating desktop lyrics step aside
 //! ```
 
 use std::collections::HashMap;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{self, RecvTimeoutError, Sender};
+use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 
 pub const STAGE: &str = "stage";
 const RECHECK: Duration = Duration::from_secs(1);
+/// While a scene sleeps, look more often: waking late shows a dark screen.
+const RECHECK_ASLEEP: Duration = Duration::from_millis(250);
+/// Share of the scene one window must cover to freeze it…
+const COVERED: f64 = 0.85;
+/// …and to put it to sleep (nothing of it is visible).
+const BURIED: f64 = 0.98;
+/// The scene's own dark, shown for the moment before a waking page draws.
+const BACKGROUND: tauri::window::Color = tauri::window::Color(5, 4, 10, 255);
+
+/// Where window-change events wake the gate (set once, by `StageGate::start`).
+static WAKE: OnceLock<Sender<Msg>> = OnceLock::new();
 
 fn is_stage(label: &str) -> bool {
     label == STAGE
@@ -81,6 +96,7 @@ pub fn show(app: &AppHandle, monitor: &str) -> tauri::Result<()> {
                     .always_on_bottom(true)
                     .focused(false)
                     .visible(false)
+                    .background_color(BACKGROUND)
                     .build()?;
                 #[cfg(windows)]
                 if i == 0 {
@@ -182,9 +198,26 @@ pub fn hide(app: &AppHandle) -> tauri::Result<()> {
 }
 
 enum Msg {
-    Playing(bool),
     Opened,
     Closed,
+    /// Some window came to the front, was minimized or moved: look again.
+    Recheck,
+}
+
+/// Waits for the next message (or `wait`, when given). Rechecks that piled up
+/// meanwhile (a window dragged around) count once. `Err` = the app is closing.
+fn next(rx: &Receiver<Msg>, wait: Option<Duration>) -> Result<Vec<Msg>, ()> {
+    let first = match wait {
+        Some(t) => match rx.recv_timeout(t) {
+            Ok(m) => Some(m),
+            Err(RecvTimeoutError::Timeout) => None,
+            Err(RecvTimeoutError::Disconnected) => return Err(()),
+        },
+        None => Some(rx.recv().map_err(|_| ())?),
+    };
+    let mut all: Vec<Msg> = first.into_iter().collect();
+    all.extend(rx.try_iter().filter(|m| !matches!(m, Msg::Recheck)));
+    Ok(all)
 }
 
 /// Watches whether each scene is actually visible (not buried under windows).
@@ -197,39 +230,46 @@ pub struct StageGate {
 impl StageGate {
     pub fn start(app: AppHandle) -> Self {
         let (tx, rx) = mpsc::channel();
+        let _ = WAKE.set(tx.clone());
         let on_main_screen = Arc::new(AtomicBool::new(false));
         let flag = on_main_screen.clone();
         std::thread::Builder::new()
             .name("glowtune-stage-gate".into())
             .spawn(move || {
-                let (mut playing, mut open) = (false, false);
+                let mut open = false;
                 let mut covered = HashMap::new();
+                let mut asleep: HashMap<String, bool> = HashMap::new();
                 let mut topology = String::new();
                 loop {
-                    let msg = if playing && open {
-                        match rx.recv_timeout(RECHECK) {
-                            Ok(m) => Some(m),
-                            Err(RecvTimeoutError::Timeout) => None,
-                            Err(RecvTimeoutError::Disconnected) => return,
+                    // Paused or playing, an open scene is watched: one window
+                    // list a second costs nothing, and a sleeping scene must
+                    // wake when it's uncovered even while the music is paused.
+                    let wait = open.then(|| {
+                        if asleep.values().any(|a| *a) {
+                            RECHECK_ASLEEP
+                        } else {
+                            RECHECK
                         }
-                    } else {
-                        match rx.recv() {
-                            Ok(m) => Some(m),
-                            Err(_) => return,
+                    });
+                    let Ok(msgs) = next(&rx, wait) else { return };
+                    let mut opened = false;
+                    for msg in msgs {
+                        match msg {
+                            Msg::Recheck => {}
+                            Msg::Opened => {
+                                open = true;
+                                opened = true;
+                                covered.clear();
+                                asleep.clear();
+                                watch_windows(&app, true);
+                            }
+                            Msg::Closed => {
+                                open = false;
+                                covered.clear();
+                                asleep.clear();
+                                watch_windows(&app, false);
+                            }
                         }
-                    };
-                    let opened = matches!(msg, Some(Msg::Opened));
-                    match msg {
-                        Some(Msg::Playing(p)) => playing = p,
-                        Some(Msg::Opened) => {
-                            open = true;
-                            covered.clear();
-                        }
-                        Some(Msg::Closed) => {
-                            open = false;
-                            covered.clear();
-                        }
-                        None => {}
                     }
                     // Reconcile hot-plug/resolution changes only while active; sleep while paused.
                     if open && let Ok(monitors) = app.available_monitors() {
@@ -255,13 +295,25 @@ impl StageGate {
                     let mut main = false;
                     let windows = app.webview_windows();
                     covered.retain(|label, _| windows.contains_key(label));
+                    asleep.retain(|label, _| windows.contains_key(label));
                     for (label, window) in windows {
                         if !open || !is_stage(&label) {
                             continue;
                         }
-                        let now_covered = is_covered(&window);
+                        let share = coverage(&window);
+                        let now_covered = share >= COVERED;
+                        let now_asleep = share >= BURIED;
+                        let was_asleep = asleep.insert(label.clone(), now_asleep).unwrap_or(false);
+                        // Waking: draw again first, then tell the page it's seen.
+                        if was_asleep && !now_asleep {
+                            set_awake(&window, true);
+                        }
                         if covered.insert(label.clone(), now_covered) != Some(now_covered) {
                             let _ = app.emit_to(&label, "stage-covered", now_covered);
+                        }
+                        // Sleeping: the page has frozen itself, now let it go.
+                        if now_asleep && !was_asleep {
+                            set_awake(&window, false);
                         }
                         main |= !now_covered
                             && primary.as_ref().is_some_and(|p| {
@@ -283,8 +335,9 @@ impl StageGate {
         Self { tx, on_main_screen }
     }
 
-    pub fn playing(&self, playing: bool) {
-        let _ = self.tx.send(Msg::Playing(playing));
+    /// Play/pause: an open scene is watched either way; just look again now.
+    pub fn playing(&self, _playing: bool) {
+        let _ = self.tx.send(Msg::Recheck);
     }
 
     /// The scene is showing its own lyrics on the main screen right now.
@@ -293,19 +346,69 @@ impl StageGate {
     }
 }
 
-#[cfg(windows)]
 pub(crate) fn is_covered(window: &tauri::WebviewWindow) -> bool {
+    coverage(window) >= COVERED
+}
+
+/// How much of the scene the biggest single window above it hides (0–1).
+#[cfg(windows)]
+fn coverage(window: &tauri::WebviewWindow) -> f64 {
     let Ok(hwnd) = window.hwnd() else {
-        return false;
+        return 0.0;
     };
     // Tauri may link a different `windows` crate version: pass the raw handle.
-    cover::covered(hwnd.0 as isize)
+    cover::coverage(hwnd.0 as isize)
 }
 
 #[cfg(not(windows))]
-pub(crate) fn is_covered(_window: &tauri::WebviewWindow) -> bool {
-    false
+fn coverage(_window: &tauri::WebviewWindow) -> f64 {
+    0.0
 }
+
+/// Asleep: WebView2 is told the page is hidden (no frames, timers slowed,
+/// `document.hidden`) and to keep as little memory as it can, which frees the
+/// graphics memory it holds for the scene. Awake: back to normal.
+#[cfg(windows)]
+fn set_awake(window: &tauri::WebviewWindow, awake: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        ICoreWebView2_19,
+    };
+    use windows::core::Interface;
+    let result = window.with_webview(move |webview| {
+        let controller = webview.controller();
+        // SAFETY: COM calls on the webview's own (main) thread, inside with_webview.
+        unsafe {
+            let _ = controller.SetIsVisible(awake);
+            if let Ok(core) = controller.CoreWebView2()
+                && let Ok(core) = core.cast::<ICoreWebView2_19>()
+            {
+                let _ = core.SetMemoryUsageTargetLevel(if awake {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                } else {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                });
+            }
+        }
+    });
+    if let Err(e) = result {
+        tracing::warn!("desktop scene sleep: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+fn set_awake(_window: &tauri::WebviewWindow, _awake: bool) {}
+
+/// While a scene is open, any window coming to the front, minimizing,
+/// restoring or being dropped somewhere wakes the gate at once, so a sleeping
+/// scene is drawing again before the window in front has finished moving away.
+#[cfg(windows)]
+fn watch_windows(app: &AppHandle, on: bool) {
+    let _ = app.run_on_main_thread(move || cover::watch(on));
+}
+
+#[cfg(not(windows))]
+fn watch_windows(_app: &AppHandle, _on: bool) {}
 
 #[cfg(test)]
 mod tests {
@@ -350,7 +453,57 @@ mod cover {
         stage: HWND,
         area: RECT,
         own_pid: u32,
-        covered: bool,
+        /// Largest share of the scene one window above it hides.
+        most: f64,
+    }
+
+    /// The window-change hook while a scene is open (0 = none).
+    static HOOK: std::sync::atomic::AtomicIsize = std::sync::atomic::AtomicIsize::new(0);
+
+    /// Starts or stops the window-change hook. Main thread only: the hook's
+    /// events arrive through this thread's message loop.
+    pub fn watch(on: bool) {
+        use std::sync::atomic::Ordering;
+        use windows::Win32::UI::Accessibility::{HWINEVENTHOOK, SetWinEventHook, UnhookWinEvent};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            EVENT_SYSTEM_FOREGROUND, EVENT_SYSTEM_MINIMIZEEND, WINEVENT_OUTOFCONTEXT,
+        };
+        let old = HOOK.swap(0, Ordering::Relaxed);
+        if old != 0 {
+            // SAFETY: a hook this thread set earlier.
+            let _ = unsafe { UnhookWinEvent(HWINEVENTHOOK(old as *mut _)) };
+        }
+        if on {
+            // Foreground changes, move/resize ends and minimize start/end: the
+            // system events between those two, all rare (not every mouse move).
+            // SAFETY: out-of-context hook with a plain function as callback.
+            let hook = unsafe {
+                SetWinEventHook(
+                    EVENT_SYSTEM_FOREGROUND,
+                    EVENT_SYSTEM_MINIMIZEEND,
+                    None,
+                    Some(changed),
+                    0,
+                    0,
+                    WINEVENT_OUTOFCONTEXT,
+                )
+            };
+            HOOK.store(hook.0 as isize, Ordering::Relaxed);
+        }
+    }
+
+    unsafe extern "system" fn changed(
+        _hook: windows::Win32::UI::Accessibility::HWINEVENTHOOK,
+        _event: u32,
+        _hwnd: HWND,
+        _object: i32,
+        _child: i32,
+        _thread: u32,
+        _time: u32,
+    ) {
+        if let Some(tx) = super::WAKE.get() {
+            let _ = tx.send(super::Msg::Recheck);
+        }
     }
 
     /// HWND_TOP without moving, resizing or stealing activation.
@@ -366,23 +519,56 @@ mod cover {
         }
     }
 
-    /// True if a single other window above the scene covers ≥ 85 % of it.
-    pub fn covered(stage: isize) -> bool {
+    /// The largest share (0–1) of the scene that one other window above it covers.
+    pub fn coverage(stage: isize) -> f64 {
         let stage = HWND(stage as *mut _);
         let mut area = RECT::default();
         // SAFETY: plain Win32 query on a window handle we own.
         if unsafe { GetWindowRect(stage, &mut area) }.is_err() {
-            return false;
+            return 0.0;
+        }
+        // Only the part outside the taskbar counts: the taskbar is always
+        // above the scene, so a maximized window hides all that's left of it
+        // (unclipped, a full-screen scene under a maximized window read 97 %
+        // and never went to sleep).
+        {
+            use windows::Win32::Graphics::Gdi::{
+                GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+            };
+            let mut info = MONITORINFO {
+                cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                ..Default::default()
+            };
+            // SAFETY: plain Win32 queries on our own window handle.
+            if unsafe {
+                GetMonitorInfoW(
+                    MonitorFromWindow(stage, MONITOR_DEFAULTTONEAREST),
+                    &mut info,
+                )
+            }
+            .as_bool()
+            {
+                let work = info.rcWork;
+                let clipped = RECT {
+                    left: area.left.max(work.left),
+                    top: area.top.max(work.top),
+                    right: area.right.min(work.right),
+                    bottom: area.bottom.min(work.bottom),
+                };
+                if clipped.right > clipped.left && clipped.bottom > clipped.top {
+                    area = clipped;
+                }
+            }
         }
         let mut scan = Scan {
             stage,
             area,
             own_pid: std::process::id(),
-            covered: false,
+            most: 0.0,
         };
         // SAFETY: the callback only runs during this call; `scan` outlives it.
         let _ = unsafe { EnumWindows(Some(visit), LPARAM(&mut scan as *mut Scan as isize)) };
-        scan.covered
+        scan.most
     }
 
     unsafe extern "system" fn visit(hwnd: HWND, data: LPARAM) -> BOOL {
@@ -445,9 +631,9 @@ mod cover {
             {
                 return true.into();
             }
-            if overlap(&r, &scan.area) >= 0.85 {
-                scan.covered = true;
-                return false.into();
+            scan.most = scan.most.max(overlap(&r, &scan.area));
+            if scan.most >= super::BURIED {
+                return false.into(); // can't get more hidden than that
             }
         }
         true.into()

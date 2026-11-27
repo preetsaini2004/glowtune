@@ -514,7 +514,7 @@
                   </svg>
                 {/if}
                 <i class="dot"></i>
-                <b class="word">{s.text}</b>
+                <b class="word" data-t={s.text}>{s.text}</b>
               </span>
             {/each}
           {/key}
@@ -1013,44 +1013,92 @@
       box-shadow: 0 0 4px 1px color-mix(in oklab, var(--glow) 50%, transparent);
     }
   }
+  /* The word is laid out once at its lit size and grows/shrinks with `scale`
+     (drawn by the GPU). Animating font-size re-measured the text on every
+     frame: ~230 layouts a second, most of the scene's CPU. Scaling from the
+     star point (top-left before the translate) moves it exactly like the
+     font-size did. Weight changes once per step, not per frame. */
   .word {
     position: absolute;
     left: 0;
     top: 0;
     transform: translate(-50%, 0.35em);
+    transform-origin: 0 0;
     white-space: nowrap;
-    font-size: var(--small);
+    font-size: var(--big);
+    scale: var(--at-small);
     font-weight: 560;
     letter-spacing: -0.01em;
     color: #fff;
     opacity: 0.3;
+    /* small, mid and big are 3.3, 3.9 and 9.5 cqh. */
+    --at-small: 0.347;
+    --at-mid: 0.41;
+    --at-big: 1;
     animation:
       word-lit 300ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--d) both,
-      word-rest 700ms ease calc(var(--d) + var(--t)) forwards;
+      word-weight-lit 300ms steps(1, start) var(--d) both,
+      word-rest 700ms ease calc(var(--d) + var(--t)) forwards,
+      word-weight-rest 700ms steps(1, end) calc(var(--d) + var(--t)) forwards;
   }
   @keyframes word-lit {
     to {
-      font-size: var(--big);
-      font-weight: 720;
+      scale: var(--at-big);
       opacity: 1;
-      text-shadow: 0 0 28px color-mix(in oklab, var(--glow) 55%, transparent);
     }
   }
   @keyframes word-rest {
     from {
-      font-size: var(--big);
-      font-weight: 720;
+      scale: var(--at-big);
       opacity: 1;
-      text-shadow: 0 0 28px color-mix(in oklab, var(--glow) 55%, transparent);
     }
     to {
-      font-size: var(--mid);
+      scale: var(--at-mid);
       opacity: 0.72;
     }
   }
-  /* A held word rings out a little larger. */
-  .star.hold {
-    --big: calc(clamp(34px, 11.5cqh, 96px) * var(--ls, 1));
+  /* The glow: a copy of the word whose shadow is drawn once and faded in and
+     out (opacity is GPU work). Animating text-shadow itself made the page
+     re-layout every frame. */
+  .word::after {
+    content: attr(data-t);
+    position: absolute;
+    left: 0;
+    top: 0;
+    color: transparent;
+    text-shadow: 0 0 28px color-mix(in oklab, var(--glow) 55%, transparent);
+    opacity: 0;
+    pointer-events: none;
+    animation:
+      word-glow-lit 300ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--d) both,
+      word-glow-rest 700ms ease calc(var(--d) + var(--t)) forwards;
+  }
+  @keyframes word-glow-lit {
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes word-glow-rest {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes word-weight-lit {
+    to {
+      font-weight: var(--lit-weight, 720);
+    }
+  }
+  @keyframes word-weight-rest {
+    from {
+      font-weight: var(--lit-weight, 720);
+    }
+  }
+  /* A held word rings out a little larger (11.5 cqh instead of 9.5). */
+  .star.hold .word {
+    --at-big: 1.21;
   }
   /* The sparkle sits on the star while its word is sung. */
   .spark {
@@ -1118,6 +1166,7 @@
       box-shadow: 0 0 8px 2px var(--glow);
     }
   }
+  .stars.paused .word::after,
   .stars.paused * {
     animation-play-state: paused !important;
   }
@@ -1380,13 +1429,16 @@
     opacity: 0.3;
     animation:
       o-lit 300ms cubic-bezier(0.2, 0.8, 0.2, 1) var(--d) both,
-      o-rest 700ms ease calc(var(--d) + var(--t)) forwards;
+      word-weight-lit 300ms steps(1, start) var(--d) both,
+      o-rest 700ms ease calc(var(--d) + var(--t)) forwards,
+      word-weight-rest 700ms steps(1, end) calc(var(--d) + var(--t)) forwards;
+    /* Weight steps once (see .word); animating it re-measured text every frame. */
+    --lit-weight: 780;
   }
   @keyframes o-lit {
     to {
       opacity: 1;
       scale: 1.35;
-      font-weight: 780;
       text-shadow: 0 0 22px color-mix(in oklab, var(--glow) 60%, transparent);
     }
   }
@@ -1394,7 +1446,6 @@
     from {
       opacity: 1;
       scale: 1.35;
-      font-weight: 780;
       text-shadow: 0 0 22px color-mix(in oklab, var(--glow) 60%, transparent);
     }
     to {
@@ -1516,6 +1567,20 @@
   }
   .light .sh {
     text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+  }
+  /* Over a video or floating on the desktop: the same flare in colour only.
+     An animated filter would redraw every word's glow on every frame. */
+  .light .shw {
+    animation-name: sh-lit-soft;
+  }
+  @keyframes sh-lit-soft {
+    0%,
+    100% {
+      color: #fff;
+    }
+    12% {
+      color: color-mix(in oklab, var(--c1) 35%, white);
+    }
   }
 
   @property --close {

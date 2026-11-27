@@ -204,11 +204,13 @@
 </main>
 
 <style>
-  /* Stars / Rain fill the whole window (it's click-through). */
+  /* Stars / Rain fill the whole window (it's click-through). No filter on this
+     box: a shadow over the whole window is redrawn on every animation frame
+     (that cost several % CPU over games and videos). Each look's `light` mode
+     gives its own words a cheap shadow instead. */
   .scene-look {
     position: absolute;
     inset: 0;
-    filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.55));
   }
   .mover {
     position: fixed;

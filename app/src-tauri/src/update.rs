@@ -551,14 +551,20 @@ pub fn whats_new_on_start(app: &AppHandle, had_settings: bool) {
     if seen == current {
         return;
     }
-    crate::update_settings(app, |s| s.last_seen_version.clone_from(&current));
-    if !had_settings || card_notes(NOTES).is_empty() {
-        return;
-    }
+    let remember = |app: &AppHandle| {
+        crate::update_settings(app, |s| s.last_seen_version.clone_from(&current));
+    };
     let channel = app.state::<Updates>().view().channel;
-    if seen.is_empty() && channel == Channel::Github {
+    if !had_settings
+        || card_notes(NOTES).is_empty()
+        || (seen.is_empty() && channel == Channel::Github)
+    {
+        remember(app);
         return;
     }
+    // The version is remembered only once the card is on screen: Glowtune
+    // closed while the card waits (a full-screen game in front) shows it at
+    // the next start instead of never.
     tracing::info!("updates: first start of {current} (was {seen:?}): what's new");
     let app = app.clone();
     let _ = std::thread::Builder::new()
@@ -569,13 +575,16 @@ pub fn whats_new_on_start(app: &AppHandle, had_settings: bool) {
             while overlay::fullscreen_screen().is_some() {
                 std::thread::sleep(COVERED_RETRY);
             }
-            if let Err(e) = corner_card(
+            match corner_card(
                 &app,
                 WHATS_NEW,
                 "/update?whatsnew",
                 "What's new in Glowtune",
             ) {
-                tracing::warn!("what's new: {e}");
+                Ok(()) => crate::update_settings(&app, |s| {
+                    s.last_seen_version = app.package_info().version.to_string();
+                }),
+                Err(e) => tracing::warn!("what's new: {e}"),
             }
         });
 }

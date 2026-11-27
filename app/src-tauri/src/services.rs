@@ -117,6 +117,7 @@ pub fn show_at(app: &AppHandle, service: Service, url: Option<String>) -> tauri:
             }
             w.unminimize()?;
             w.show()?;
+            set_background(&w, false);
             return w.set_focus();
         }
         w.destroy()?;
@@ -220,16 +221,135 @@ fn build(app: &AppHandle, service: Service, start: Option<&str>) -> tauri::Resul
     }
     // Sound effects follow the window: on while it lives, off when it closes.
     let sound_app = app.clone();
-    window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::Destroyed)
-            && let Some(sound) = sound_app.try_state::<crate::sound::Sound>()
-        {
-            sound.window_closed();
+    let handle = window.clone();
+    window.on_window_event(move |event| match event {
+        tauri::WindowEvent::Destroyed => {
+            if let Some(sound) = sound_app.try_state::<crate::sound::Sound>() {
+                sound.window_closed();
+            }
         }
+        // Closing it while it plays keeps the music: the window goes away
+        // (out of the taskbar, drawing nothing, memory trimmed), the page
+        // keeps playing. Paused, it closes for real.
+        tauri::WindowEvent::CloseRequested { api, .. } if web_playing(&sound_app) => {
+            api.prevent_close();
+            let _ = handle.hide();
+            set_background(&handle, true);
+            keep_playing_note(&sound_app, service);
+            watch_hidden(&sound_app);
+        }
+        // Minimized: nothing of it is on screen, so draw nothing and keep
+        // as little memory as possible; restored: back to normal.
+        tauri::WindowEvent::Resized(_) => {
+            let low =
+                handle.is_minimized().unwrap_or(false) || !handle.is_visible().unwrap_or(true);
+            set_background(&handle, low);
+        }
+        _ => {}
     });
     report_browser_process(app, &window);
     tracing::info!("opened {}", service.title());
     Ok(())
+}
+
+/// The service window is what's playing right now.
+fn web_playing(app: &AppHandle) -> bool {
+    app.try_state::<std::sync::Arc<crate::hub::Shared>>()
+        .and_then(|s| {
+            s.snapshot.lock().ok().map(|s| {
+                s.playback.status == "playing"
+                    && s.track.as_ref().is_some_and(|t| t.source == "Web player")
+            })
+        })
+        .unwrap_or(false)
+}
+
+/// Out of sight (minimized or closed-while-playing): WebView2 stops drawing
+/// the page and keeps as little memory as it can; the audio keeps going.
+/// Never suspended: a suspended page would stop the music.
+#[cfg(windows)]
+fn set_background(window: &tauri::WebviewWindow, background: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{
+        COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL,
+        ICoreWebView2_19,
+    };
+    use windows::core::Interface;
+    let result = window.with_webview(move |webview| {
+        let controller = webview.controller();
+        // SAFETY: COM calls on the webview's own (main) thread, inside with_webview.
+        unsafe {
+            // wry leaves this alone on minimize; set it both ways ourselves.
+            let _ = controller.SetIsVisible(!background);
+            if let Ok(core) = controller.CoreWebView2()
+                && let Ok(core) = core.cast::<ICoreWebView2_19>()
+            {
+                let _ = core.SetMemoryUsageTargetLevel(if background {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW
+                } else {
+                    COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL
+                });
+            }
+        }
+    });
+    if let Err(e) = result {
+        tracing::warn!("service window background: {e}");
+    }
+}
+
+#[cfg(not(windows))]
+fn set_background(_window: &tauri::WebviewWindow, _background: bool) {}
+
+/// The first time each session: say where the music went.
+fn keep_playing_note(app: &AppHandle, service: Service) {
+    static SAID: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if !SAID.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        crate::osd::show(
+            app,
+            crate::osd::Toast::new(
+                "player",
+                format!("{} keeps playing in the background", service.title()),
+            ),
+        );
+    }
+}
+
+/// Hidden and not playing for this long: close it for real (frees all of it).
+const HIDDEN_IDLE: std::time::Duration = std::time::Duration::from_secs(10 * 60);
+
+/// While the window is hidden, closes it once the music has been stopped or
+/// paused for `HIDDEN_IDLE`. Showing it again ends the watch.
+fn watch_hidden(app: &AppHandle) {
+    static WATCHING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    if WATCHING.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        return;
+    }
+    let app = app.clone();
+    let _ = std::thread::Builder::new()
+        .name("glowtune-service-hidden".into())
+        .spawn(move || {
+            let mut idle = std::time::Duration::ZERO;
+            let step = std::time::Duration::from_secs(30);
+            loop {
+                std::thread::sleep(step);
+                let Some(w) = app.get_webview_window(SERVICE) else {
+                    break;
+                };
+                if w.is_visible().unwrap_or(true) {
+                    break;
+                }
+                idle = if web_playing(&app) {
+                    std::time::Duration::ZERO
+                } else {
+                    idle + step
+                };
+                if idle >= HIDDEN_IDLE {
+                    tracing::info!("closing the hidden service window: idle");
+                    let _ = w.destroy();
+                    break;
+                }
+            }
+            WATCHING.store(false, std::sync::atomic::Ordering::Relaxed);
+        });
 }
 
 /// Remembers when the user last clicked or typed in the service page, so a
